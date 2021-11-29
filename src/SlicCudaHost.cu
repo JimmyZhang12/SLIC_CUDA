@@ -1,5 +1,6 @@
 #include "SlicCudaHost.h"
 #include "SlicCudaDevice.h"
+#include <chrono>
 
 using namespace std;
 using namespace cv;
@@ -57,11 +58,12 @@ void SlicCuda::segment(const Mat& frameBGR) {
 	gpuInitClusters();
 
 	for (int i = 0; i<m_nbIteration; i++) {
-		// printf("Iter %d, m_SpxHeight: %d, m_SpxWidth: %d", i, m_SpxHeight, m_SpxWidth);
+		auto t0 = std::chrono::high_resolution_clock::now();
 		assignment();
-		cudaDeviceSynchronize();
 		update();
-		cudaDeviceSynchronize();
+		auto t1 = std::chrono::high_resolution_clock::now();
+		double time = std::chrono::duration<double>(t1-t0).count() ;
+		cout<<std::fixed<<i<< ": Total segment Time: "<< time <<"s"<<endl;
 	}
 	downloadLabels();
 }
@@ -178,6 +180,7 @@ void SlicCuda::assignment(){
 
 	float wc2 = m_wc * m_wc;
 
+	auto t0 = std::chrono::high_resolution_clock::now();
 	kAssignment << < blockPerGrid, threadPerBlock >> >(oSurfFrameLab,
 		d_fClusters,
 		m_FrameWidth, 
@@ -187,12 +190,25 @@ void SlicCuda::assignment(){
 		wc2, 
 		oSurfLabels, 
 		d_fAccAtt);
+	cudaDeviceSynchronize();
+
+	auto t1 = std::chrono::high_resolution_clock::now();
+	double time = std::chrono::duration<double>(t1-t0).count();
+	
+	cout<<std::fixed<<"\tAssignment Time: "<< time <<"s"<<endl;
 }
 
 void SlicCuda::update(){
 	dim3 threadsPerBlock(m_deviceProp.maxThreadsPerBlock);
 	dim3 numBlocks(iDivUp(m_nbSpx, m_deviceProp.maxThreadsPerBlock));
+
+	auto t0 = std::chrono::high_resolution_clock::now();
 	kUpdate << <numBlocks, threadsPerBlock >> >(m_nbSpx, d_fClusters, d_fAccAtt);
+	cudaDeviceSynchronize();
+	auto t1 = std::chrono::high_resolution_clock::now();
+	double time = std::chrono::duration<double>(t1-t0).count();
+	
+	cout<<std::fixed<<"\tUpdate Time: "<< time <<"s"<<endl;
 }
 
 void SlicCuda::downloadLabels(){

@@ -94,8 +94,8 @@ endif()
 CUDA_INCLUDE_DIRECTORIES("${OpenCV_INCLUDE_DIRS}" "${CMAKE_SOURCE_DIR}/include")
 
 ### Link 
-set(SOURCE_FILES "src/SlicCudaHost.cu" "src/SlicCudaDevice.cu" "include/util.hpp" "include/SlicCudaHost.h" "include/SlicCudaDevice.h")
-cuda_add_executable(SlicCuda ${SOURCE_FILES} "src/main.cpp")
+set(SOURCE_FILES "src/SlicCudaHost.cu" "src/SlicCudaDevice.cu" "include/SlicCudaHost.h" "include/SlicCudaDevice.h")
+cuda_add_executable(SlicCuda ${SOURCE_FILES} ${COMMON_FILES} "src/main.cpp")
 
 
 target_include_directories(SlicCuda PUBLIC "include")

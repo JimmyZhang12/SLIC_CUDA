@@ -1,7 +1,7 @@
 #include <iostream>
 #include <opencv2/opencv.hpp>
+#include <chrono>
 #include "SlicCudaHost.h"
-#include "util.hpp"
 
 using namespace std;
 using namespace cv;
@@ -40,13 +40,15 @@ int main() {
     for(i = 0; i<10; i++){
 		frame = imread("/home/jimmy/ece508/data/image.jpg", IMREAD_COLOR);
 
-		auto start = cv::getTickCount();
+		auto t0 = std::chrono::high_resolution_clock::now();
 		oSlicCuda.segment(frame);
-		auto end = cv::getTickCount();
-		auto segment_time = (end - start) / cv::getTickFrequency();
+
+		auto t1 = std::chrono::high_resolution_clock::now();
+		double time = std::chrono::duration<double>(t1-t0).count() ;
+		cout << "Frame " << frame.size() <<" "<< i+1 << "/" << endFrame << ", Time: "<< time <<"s"<<endl;
+
 		oSlicCuda.enforceConnectivity();
 
-		cout << "Frame " << frame.size() <<" "<< i+1 << "/" << endFrame << ", Time: "<< time <<"s"<<endl;
 
 		labels = oSlicCuda.getLabels();
 		SlicCuda::displayBound(frame, (float*)labels.data, Scalar(255, 0, 0));
