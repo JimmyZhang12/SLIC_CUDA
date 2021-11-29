@@ -13,18 +13,17 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 
 ### OPENCV CHECK
-find_package(OpenCV 3.0 REQUIRED)
-message(STATUS "Found OpenCV >=3.0 at '${OpenCV_DIR}'")
+find_package(OpenCV REQUIRED)
+message(STATUS "Found OpenCV at '${OpenCV_DIR}'")
 
 ### CUDA CHECK 
 find_package(CUDA REQUIRED)
-set(CUDA_COMPUTE_CAPABILITY "20")
+set(CUDA_COMPUTE_CAPABILITY "86")
 set(CUDA_GENERATE_CODE "arch=compute_${CUDA_COMPUTE_CAPABILITY},code=sm_${CUDA_COMPUTE_CAPABILITY}" CACHE STRING "Which GPU architectures to generate code for (each arch/code pair will be passed as --generate-code option to nvcc, separate multiple pairs by ;)")
 set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch compute_${CUDA_COMPUTE_CAPABILITY})
 
 
 ### Compilation 
-
 if(("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU") OR ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang") OR ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang"))
     option(BUILD_SHARED_LIBS "Build shared libraries (.so) instead of static ones (.a)" ON)
     if(NOT CMAKE_CROSSCOMPILING)
@@ -36,14 +35,14 @@ if(("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU") OR ("${CMAKE_CXX_COMPILER_ID}" ST
     add_definitions(-Wall)
     add_definitions(-Wfatal-errors)
     add_definitions(-ftemplate-depth=900) # already default for gcc, but not for clang
-    check_function_exists(aligned_alloc USE_STL_ALIGNED_ALLOC)
-    if(NOT USE_STL_ALIGNED_ALLOC)
-        set(USE_STL_ALIGNED_ALLOC 0 CACHE INTERNAL "Have function aligned_alloc")
-    endif()
-    check_function_exists(posix_memalign USE_POSIX_ALIGNED_ALLOC)
-    if(NOT USE_POSIX_ALIGNED_ALLOC)
-        set(USE_POSIX_ALIGNED_ALLOC 0 CACHE INTERNAL "Have function posix_memalign")
-    endif()
+    # check_function_exists(aligned_alloc USE_STL_ALIGNED_ALLOC)
+    # if(NOT USE_STL_ALIGNED_ALLOC)
+    #     set(USE_STL_ALIGNED_ALLOC 0 CACHE INTERNAL "Have function aligned_alloc")
+    # endif()
+    # check_function_exists(posix_memalign USE_POSIX_ALIGNED_ALLOC)
+    # if(NOT USE_POSIX_ALIGNED_ALLOC)
+    #     set(USE_POSIX_ALIGNED_ALLOC 0 CACHE INTERNAL "Have function posix_memalign")
+    # endif()
     if(USE_LINK_TIME_OPTIM)
         add_definitions(-flto)
         if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -92,12 +91,12 @@ endif()
 
 #add_custom_command(COMMAND set "PATH=${opencvDLL_DIRS};%PATH%")
 
-
-
 CUDA_INCLUDE_DIRECTORIES("${OpenCV_INCLUDE_DIRS}" "${CMAKE_SOURCE_DIR}/include")
 
 ### Link 
-set(SOURCE_FILES "src/SlicCudaHost.cu" "src/SlicCudaDevice.cu" "include/SlicCudaHost.h" "include/SlicCudaDevice.h")
+set(SOURCE_FILES "src/SlicCudaHost.cu" "src/SlicCudaDevice.cu" "include/util.hpp" "include/SlicCudaHost.h" "include/SlicCudaDevice.h")
 cuda_add_executable(SlicCuda ${SOURCE_FILES} "src/main.cpp")
+
+
 target_include_directories(SlicCuda PUBLIC "include")
 target_link_libraries(SlicCuda ${OpenCV_LIBS})

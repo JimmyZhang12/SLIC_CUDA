@@ -57,6 +57,7 @@ void SlicCuda::segment(const Mat& frameBGR) {
 	gpuInitClusters();
 
 	for (int i = 0; i<m_nbIteration; i++) {
+		// printf("Iter %d, m_SpxHeight: %d, m_SpxWidth: %d", i, m_SpxHeight, m_SpxWidth);
 		assignment();
 		cudaDeviceSynchronize();
 		update();
@@ -118,7 +119,8 @@ void SlicCuda::initGpuBuffers() {
 
 void SlicCuda::uploadFrame(const Mat& frameBGR) { 
 	cv::Mat frameBGRA;
-	cv::cvtColor(frameBGR, frameBGRA, CV_BGR2BGRA);
+	cv::cvtColor(frameBGR, frameBGRA, COLOR_BGR2BGRA);
+
 	CV_Assert(frameBGRA.type() == CV_8UC4);
 	CV_Assert(frameBGRA.isContinuous());
 	gpuErrchk(cudaMemcpyToArray(cuArrayFrameBGRA, 0, 0, (uchar*)frameBGRA.data, m_nbPx* sizeof(uchar4), cudaMemcpyHostToDevice));
@@ -171,7 +173,7 @@ void SlicCuda::assignment(){
 
 	dim3 blockPerGrid(m_nbSpx, nBlockPerClust);
 	dim3 threadPerBlock(m_SpxWidth, std::min(m_SpxHeight, hMax));
-
+	// printf("GRID (%d,%d), BLOCK (%d,%d)\n", m_nbSpx, nBlockPerClust,m_SpxWidth, std::min(m_SpxHeight, hMax));
 	CV_Assert(threadPerBlock.x >= 3 && threadPerBlock.y >= 3);
 
 	float wc2 = m_wc * m_wc;
@@ -320,4 +322,28 @@ static void getSpxSizeFromDiam(const int imWidth, const int imHeight, const int 
 	}
 	*spxWidth = ((diamSpx - wl2) < (wl1 - diamSpx)) ? wl2 : wl1;
 	*spxHeight = ((diamSpx - hl2) < (hl1 - diamSpx)) ? hl2 : hl1;
+}
+
+
+std::string SlicCuda::type2str(int type) {
+  string r;
+
+  uchar depth = type & CV_MAT_DEPTH_MASK;
+  uchar chans = 1 + (type >> CV_CN_SHIFT);
+
+  switch ( depth ) {
+    case CV_8U:  r = "8U"; break;
+    case CV_8S:  r = "8S"; break;
+    case CV_16U: r = "16U"; break;
+    case CV_16S: r = "16S"; break;
+    case CV_32S: r = "32S"; break;
+    case CV_32F: r = "32F"; break;
+    case CV_64F: r = "64F"; break;
+    default:     r = "User"; break;
+  }
+
+  r += "C";
+  r += (chans+'0');
+
+  return r;
 }

@@ -7,7 +7,7 @@ Library required :
 Opencv 3.0 min
 CUDA arch>=3.0
 
-Author : Derue François-Xavier
+Author : Derue Franï¿½ois-Xavier
 francois.xavier.derue@gmail.com
 
 
@@ -21,7 +21,7 @@ francois.xavier.derue@gmail.com
 
 class SlicCuda {
 public:
-	static enum InitType{
+	enum InitType{
 		SLIC_SIZE, // initialize with a size of spx
 		SLIC_NSPX // initialize with a number of spx
 	};
@@ -100,8 +100,13 @@ public:
 	Discard orphan clusters (optional)
 	*/
 	int enforceConnectivity();
-	
-	static void displayBound(cv::Mat& image, const float* labels, const cv::Scalar colour); // cpu draw
+
+	// cpu draw
+	static void displayBound(cv::Mat& image, const float* labels, const cv::Scalar colour);
+
+	static std::string type2str(int type);
+
+
 };
 
 static inline int iDivUp(int a, int b){ return (a%b == 0) ? a / b : a / b + 1; }

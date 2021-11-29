@@ -1,5 +1,5 @@
 #include "SlicCudaDevice.h"
-
+#include <stdio.h>
 
 __global__ void kRgb2CIELab(const cudaTextureObject_t texFrameBGRA, cudaSurfaceObject_t surfFrameLab, int width, int height) {
 
@@ -37,10 +37,10 @@ __global__ void kRgb2CIELab(const cudaTextureObject_t texFrameBGRA, cudaSurfaceO
 		fPixel.z = b;
 		fPixel.w = 0;
 
-		fPixel.x = (float)nPixel.x;
-		fPixel.y = (float)nPixel.y;
-		fPixel.z = (float)nPixel.z;
-		fPixel.w = (float)nPixel.w;
+		// fPixel.x = (float)nPixel.x;
+		// fPixel.y = (float)nPixel.y;
+		// fPixel.z = (float)nPixel.z;
+		// fPixel.w = (float)nPixel.w;
 
 		surf2Dwrite(fPixel, surfFrameLab, px * 16, py);
 	}
@@ -61,9 +61,9 @@ __global__ void kInitClusters(const cudaSurfaceObject_t surfFrameLab, float* clu
 		int y = i*hSpx + hSpx / 2;
 
 		float4 color;
-		surf2Dread(&color, surfFrameLab, x * 16, y);
+		surf2Dread(&color, surfFrameLab, x * sizeof(float4), y);
 		clusters[centroidIdx] = color.x;
-		clusters[centroidIdx + nSpx] = color.y;
+		clusters[centroidIdx + 1 * nSpx] = color.y;
 		clusters[centroidIdx + 2 * nSpx] = color.z;
 		clusters[centroidIdx + 3 * nSpx] = x;
 		clusters[centroidIdx + 4 * nSpx] = y;
@@ -97,7 +97,7 @@ __global__ void kAssignment(const cudaSurfaceObject_t surfFrameLab,
 		int clustLinIdx = blockIdx.x + id_y*nClustPerRow + id_x;
 		if (clustLinIdx >= 0 && clustLinIdx<gridDim.x){
 			sharedLab[threadIdx.y][threadIdx.x].x = clusters[clustLinIdx];
-			sharedLab[threadIdx.y][threadIdx.x].y = clusters[clustLinIdx + nbSpx];
+			sharedLab[threadIdx.y][threadIdx.x].y = clusters[clustLinIdx + 1 * nbSpx];
 			sharedLab[threadIdx.y][threadIdx.x].z = clusters[clustLinIdx + 2 * nbSpx];
 
 			sharedXY[threadIdx.y][threadIdx.x].x = clusters[clustLinIdx + 3 * nbSpx];
@@ -115,19 +115,25 @@ __global__ void kAssignment(const cudaSurfaceObject_t surfFrameLab,
 	float distanceMin = 100000;
 	float labelMin = -1;
 
-	int px_in_grid = blockIdx.x*blockDim.x + threadIdx.x;
-	int py_in_grid = blockIdx.y*blockDim.y + threadIdx.y;
+	int spx_coor_x = blockIdx.x % nClustPerRow;
+	int spx_coor_y = blockIdx.x/nClustPerRow;
+	int px = spx_coor_x*wSpx + threadIdx.x;
+	int py = spx_coor_y*hSpx + threadIdx.y;
 
-	int px = px_in_grid%width;
+	if (py<height && px<width){
 
-	if (py_in_grid<hSpx && px<width){
-		int py = py_in_grid + px_in_grid / width*hSpx;
+		// if (blockIdx.x == 1000 && threadIdx.x<2){
+		// 	printf("bx:%d,tx:%d,ty:%d  px:%d,py:%d, spx_coor_x %d, spx_coor_y %d\n",
+		// 		blockIdx.x,threadIdx.x,threadIdx.y,px,py,spx_coor_x, spx_coor_y);
+		// }
 
 		float4 color;
-		surf2Dread(&color, surfFrameLab, px * 16, py);
+		surf2Dread(&color, surfFrameLab, px * sizeof(float4), py);
 		float3 px_Lab = make_float3(color.x, color.y, color.z);
 		float2 px_xy = make_float2(px, py);
+		#pragma unroll
 		for (int i = 0; i<NNEIGH; i++){
+			#pragma unroll
 			for (int j = 0; j<NNEIGH; j++){
 				if (sharedLab[i][j].x != -1){
 					float2 cluster_xy = make_float2(sharedXY[i][j].x, sharedXY[i][j].y);
