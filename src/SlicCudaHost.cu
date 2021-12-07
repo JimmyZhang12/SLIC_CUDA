@@ -1,6 +1,7 @@
 #include "SlicCudaHost.h"
 #include "SlicCudaDevice.h"
 #include <chrono>
+#include <iomanip>
 
 using namespace std;
 using namespace cv;
@@ -57,14 +58,38 @@ void SlicCuda::segment(const Mat& frameBGR) {
 	gpuRGBA2Lab();
 	gpuInitClusters();
 
+
+	// downloadClusters();
+	// for (int i=0; i < m_nbSpx; i++){
+	// 	if (i%(m_FrameWidth/m_SpxWidth) == 0)
+	// 		cout<<'\n';
+	// 	std::cout <<"("
+	// 		<< h_fClusters[i + 0*m_nbSpx] << ","
+	// 		<< h_fClusters[i + 1*m_nbSpx] << ","
+	// 		<< h_fClusters[i + 2*m_nbSpx] << ","
+	// 		<< h_fClusters[i + 3*m_nbSpx] << ","
+	// 		<< h_fClusters[i + 4*m_nbSpx] << ") ";
+	// }
+	cout<<'\n';
+
 	for (int i = 0; i<m_nbIteration; i++) {
 		auto t0 = std::chrono::high_resolution_clock::now();
 		assignment();
+
+		// Mat labels = getLabels();
+		// for (int i=0; i < m_FrameWidth; i++){
+		// 	std::cout << labels.at<float>(0,i) << " ";
+		// }
+
 		update();
+
 		auto t1 = std::chrono::high_resolution_clock::now();
 		double time = std::chrono::duration<double>(t1-t0).count() ;
 		cout<<std::fixed<<i<< ": Total segment Time: "<< time <<"s"<<endl;
 	}
+	cout<<std::fixed<<"Avg assignment Time: "<< assignment_time_count/m_nbIteration <<"s"<< endl;
+
+
 	downloadLabels();
 }
 
@@ -152,9 +177,18 @@ void SlicCuda::gpuRGBA2Lab() {
 
 
 void SlicCuda::gpuInitClusters() {
-	int blockW = 16;
+	int blockW = 1;
 	dim3 threadsPerBlock(blockW);
 	dim3 numBlocks(iDivUp(m_nbSpx, blockW));
+
+	std::cout << "gpuInitClusters GridDim:"
+			<< " " << numBlocks.x
+			<< ", " << numBlocks.y
+			<< ", " << numBlocks.z
+			<< "BlockDim:"
+			<< " " << threadsPerBlock.x
+			<< ", " << threadsPerBlock.y
+			<< ", " << threadsPerBlock.z << "\n";
 
 	kInitClusters << <numBlocks, threadsPerBlock >> >(oSurfFrameLab,
 		d_fClusters,
@@ -170,18 +204,21 @@ void SlicCuda::gpuInitClusters() {
 }
 
 void SlicCuda::assignment(){
-	int hMax = m_deviceProp.maxThreadsPerBlock / m_SpxHeight;
-	int nBlockPerClust = iDivUp(m_SpxHeight, hMax);
+	int PENCILS_PER_BLOCK = 32;
+	int VERTICAL_SPLIT = 8;
 
-	dim3 blockPerGrid(m_nbSpx, nBlockPerClust);
-	dim3 threadPerBlock(m_SpxWidth, std::min(m_SpxHeight, hMax));
-	// printf("GRID (%d,%d), BLOCK (%d,%d)\n", m_nbSpx, nBlockPerClust,m_SpxWidth, std::min(m_SpxHeight, hMax));
-	CV_Assert(threadPerBlock.x >= 3 && threadPerBlock.y >= 3);
+	int numBlock = iDivUp(m_FrameWidth,PENCILS_PER_BLOCK);
+	dim3 blockPerGrid(numBlock);
+	dim3 threadPerBlock(PENCILS_PER_BLOCK,VERTICAL_SPLIT);
+	printf("Assignment GRID (%d,%d), BLOCK (%d,%d)\n",
+		 blockPerGrid.x, blockPerGrid.y,
+		 threadPerBlock.x, threadPerBlock.y);
+
 
 	float wc2 = m_wc * m_wc;
 
 	auto t0 = std::chrono::high_resolution_clock::now();
-	kAssignment << < blockPerGrid, threadPerBlock >> >(oSurfFrameLab,
+	kAssignment_stencil << < blockPerGrid, threadPerBlock >> >(oSurfFrameLab,
 		d_fClusters,
 		m_FrameWidth, 
 		m_FrameHeight, 
@@ -196,6 +233,7 @@ void SlicCuda::assignment(){
 	double time = std::chrono::duration<double>(t1-t0).count();
 	
 	cout<<std::fixed<<"\tAssignment Time: "<< time <<"s"<<endl;
+	assignment_time_count += time;
 }
 
 void SlicCuda::update(){
@@ -213,6 +251,10 @@ void SlicCuda::update(){
 
 void SlicCuda::downloadLabels(){
 	cudaMemcpyFromArray(h_fLabels, cuArrayLabels, 0, 0, m_nbPx* sizeof(float), cudaMemcpyDeviceToHost);
+}
+
+void SlicCuda::downloadClusters(){
+	cudaMemcpy(h_fClusters, d_fClusters, m_nbSpx*sizeof(float)*5, cudaMemcpyDeviceToHost);
 }
 
 int SlicCuda::enforceConnectivity() {

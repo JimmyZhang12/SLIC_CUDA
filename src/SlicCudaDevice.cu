@@ -1,6 +1,8 @@
 #include "SlicCudaDevice.h"
 #include <stdio.h>
 
+#define DIV_UP(x, y ) (x + y - 1) / y
+
 __global__ void kRgb2CIELab(const cudaTextureObject_t texFrameBGRA, cudaSurfaceObject_t surfFrameLab, int width, int height) {
 
 	int px = blockIdx.x*blockDim.x + threadIdx.x;
@@ -67,8 +69,118 @@ __global__ void kInitClusters(const cudaSurfaceObject_t surfFrameLab, float* clu
 		clusters[centroidIdx + 2 * nSpx] = color.z;
 		clusters[centroidIdx + 3 * nSpx] = x;
 		clusters[centroidIdx + 4 * nSpx] = y;
+
+		// if(centroidIdx==0){
+		// 	printf("(%f,%f,%f,%f,%f)\n",
+		// 	clusters[centroidIdx],clusters[centroidIdx + 1 * nSpx],clusters[centroidIdx + 2 * nSpx],clusters[centroidIdx + 3 * nSpx],clusters[centroidIdx + 4 * nSpx]);
+		// }
 	}
 }
+
+
+__global__ void kAssignment_stencil(const cudaSurfaceObject_t surfFrameLab, 
+	const float* clusters,
+	const int width, 
+	const int height, 
+	const int wSpx, 
+	const int hSpx, 
+	const float wc2, 
+	cudaSurfaceObject_t surfLabels,
+	float* accAtt_g){
+
+	// gather NNEIGH surrounding clusters
+	const int NNEIGH = 3;
+
+	int nClustPerRow = width / wSpx;
+	int nClustPerCol = height / hSpx;
+
+	int nbSpx = nClustPerRow * nClustPerCol;
+
+	// Find nearest neighbour
+	float areaSpx = wSpx*hSpx;
+	int px = blockIdx.x*blockDim.x + threadIdx.x;
+
+
+	int py_num = DIV_UP(height,blockDim.y);
+	int py_end = py_num*(threadIdx.y+1) > height? height:py_num*(threadIdx.y+1);
+	if (px<width){
+		for (int py=py_num*threadIdx.y; py<py_end; py++){
+			float distanceMin = 9999999;
+			float labelMin = -1;
+			float distTmp = distanceMin;
+
+			float4 color;
+			surf2Dread(&color, surfFrameLab, px * sizeof(float4), py);
+			float3 px_Lab = make_float3(color.x, color.y, color.z);
+			float2 px_xy = make_float2(px, py);
+
+			int spx_coor_x = px/wSpx;
+			int spx_coor_y = py/hSpx;
+
+			int offset_y[9] = {-1,-1,-1, 0,0,0, 1,1,1};
+			int offset_x[9] = {-1, 0, 1,-1,0,1,-1,0,1};
+
+			#pragma unroll
+			for (int n=0; n<9;n++){
+				int j = offset_x[n];
+				int i = offset_y[n];
+
+				int spx_neigh_coor_x = spx_coor_x + j;
+				int spx_neigh_coor_y = spx_coor_y + i;
+				int spx_idx = spx_neigh_coor_y*nClustPerRow + spx_neigh_coor_x;
+
+				if (spx_neigh_coor_x>=0 && spx_neigh_coor_x<nClustPerRow &&
+					spx_neigh_coor_y>=0 && spx_neigh_coor_y<nClustPerCol){
+
+					float2 cluster_xy = make_float2(clusters[spx_idx+3*nbSpx], clusters[spx_idx+4*nbSpx]);
+					float3 cluster_Lab = make_float3(clusters[spx_idx], clusters[spx_idx+nbSpx], clusters[spx_idx+2*nbSpx]);
+					// float2 cluster_xy = make_float2(0,0);
+					// float3 cluster_Lab = make_float3(0,0);
+
+
+					float2 xy_diff = px_xy - cluster_xy;
+					float3 lab_diff = px_Lab - cluster_Lab;
+					float ds2 = xy_diff.x*xy_diff.x + xy_diff.y*xy_diff.y;
+					float dc2 = lab_diff.x*lab_diff.x + lab_diff.y*lab_diff.y + lab_diff.z*lab_diff.z;
+					distTmp = sqrtf(dc2 + ds2 / areaSpx*wc2);
+
+			
+					// if (px==0 && py==0){
+						// printf("nbSpx:%d, wSpx:%d, hSpx:%d, spx_idx:%d| (px %d, py %d) - (nn_coorx %f, nn_coory %f) = %f, %f\n",
+						// 	nbSpx,wSpx,hSpx,spx_idx,
+						// 	px,py,clust_x,clust_y,distTmp, distanceMin);
+						// printf("%f %f\n", distTmp, distanceMin);
+						// printf("dist = %f %f %f %f %f\n", px_c_xy.x,px_c_xy.y,px_c_Lab.x,px_c_Lab.y,px_c_Lab.z);
+						// printf("labxy c = %f,%f,%f,%f,%f\n",clust_l,clust_a,clust_b,clust_x,clust_y);
+						// printf("labxy p = %f,%f,%f,%f,%f\n",color.x,color.y,color.z,(float)px,(float)py);
+					//	}
+
+					if (distTmp < distanceMin){
+						distanceMin = distTmp;
+						labelMin = spx_idx;
+						// if (px==0 && py == 0){
+						// 	printf("labelmin %d \n", labelMin);
+						// }
+					}
+					
+				}
+			}
+		
+			surf2Dwrite(labelMin, surfLabels, px * sizeof(float), py);
+			
+			int iLabelMin = int(labelMin);
+			atomicAdd(&accAtt_g[iLabelMin            ], px_Lab.x);
+			atomicAdd(&accAtt_g[iLabelMin +     nbSpx], px_Lab.y);
+			atomicAdd(&accAtt_g[iLabelMin + 2 * nbSpx], px_Lab.z);
+			atomicAdd(&accAtt_g[iLabelMin + 3 * nbSpx], px);
+			atomicAdd(&accAtt_g[iLabelMin + 4 * nbSpx], py);
+			atomicAdd(&accAtt_g[iLabelMin + 5 * nbSpx], 1); //counter*/
+		}
+	}
+		
+}
+
+
 
 __global__ void kAssignment(const cudaSurfaceObject_t surfFrameLab, 
 	const float* clusters,
@@ -121,11 +233,6 @@ __global__ void kAssignment(const cudaSurfaceObject_t surfFrameLab,
 	int py = spx_coor_y*hSpx + threadIdx.y;
 
 	if (py<height && px<width){
-
-		// if (blockIdx.x == 1000 && threadIdx.x<2){
-		// 	printf("bx:%d,tx:%d,ty:%d  px:%d,py:%d, spx_coor_x %d, spx_coor_y %d\n",
-		// 		blockIdx.x,threadIdx.x,threadIdx.y,px,py,spx_coor_x, spx_coor_y);
-		// }
 
 		float4 color;
 		surf2Dread(&color, surfFrameLab, px * sizeof(float4), py);

@@ -1,7 +1,7 @@
 /*
 This file gathers all the device kernel functions
 
-author : Derue François-Xavier
+author : Derue Franï¿½ois-Xavier
 francois.xavier.derue<at>gmail.com
 */
 
@@ -30,6 +30,16 @@ __global__ void kAssignment(const cudaSurfaceObject_t frameLab,
 							const float wc2,
 							cudaSurfaceObject_t labels,
 							float* accAtt_g);
+
+__global__ void kAssignment_stencil(const cudaSurfaceObject_t frameLab,
+const float* clusters,
+const int width,
+const int height, 
+const int wSpx, 
+const int hSpx, 
+const float wc2,
+cudaSurfaceObject_t labels,
+float* accAtt_g);
 
 __global__ void kUpdate(int nbSpx, float* clusters, float* accAtt_g);
 

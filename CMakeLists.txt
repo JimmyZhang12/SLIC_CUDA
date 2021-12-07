@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.1.0 FATAL_ERROR)
 project(SuperpixelSegmentation)
 
+set(CMAKE_CXX_FLAGS_DEBUG "-g -ggdb -O0")
 
 
 set(EXTERNAL_DATA_ROOT "${CMAKE_SOURCE_DIR}/data/" CACHE PATH "External data root folder (this is where all datasets should be located for applications to find them automatically)")
@@ -20,7 +21,7 @@ message(STATUS "Found OpenCV at '${OpenCV_DIR}'")
 find_package(CUDA REQUIRED)
 set(CUDA_COMPUTE_CAPABILITY "86")
 set(CUDA_GENERATE_CODE "arch=compute_${CUDA_COMPUTE_CAPABILITY},code=sm_${CUDA_COMPUTE_CAPABILITY}" CACHE STRING "Which GPU architectures to generate code for (each arch/code pair will be passed as --generate-code option to nvcc, separate multiple pairs by ;)")
-set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch compute_${CUDA_COMPUTE_CAPABILITY})
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch compute_${CUDA_COMPUTE_CAPABILITY} -G)
 
 
 ### Compilation 

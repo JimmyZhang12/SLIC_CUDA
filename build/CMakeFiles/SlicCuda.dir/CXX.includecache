@@ -9,6 +9,8 @@
 ../include/SlicCudaHost.h
 opencv2/opencv.hpp
 -
+vector
+-
 cuda_runtime.h
 ../include/cuda_runtime.h
 
@@ -18,6 +20,8 @@ iostream
 opencv2/opencv.hpp
 -
 chrono
+-
+string
 -
 SlicCudaHost.h
 /home/jimmy/ece508/SLIC_CUDA/src/SlicCudaHost.h

@@ -259,25 +259,17 @@ CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/math-vector.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/mathcalls.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/mathinline.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/posix1_lim.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/posix2_lim.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/pthreadtypes-arch.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/sched.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/select.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/select2.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/setjmp.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/stdint-intn.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/stdio.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/stdio2.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/stdio_lim.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/stdlib-bsearch.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/stdlib-float.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/stdlib.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/string_fortified.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/strings_fortified.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/sys_errlist.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/sysmacros.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/thread-shared-types.h
@@ -307,7 +299,6 @@ CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/waitflags.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/waitstatus.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/wchar.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/wchar2.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/wctype-wchar.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/wordsize.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/include/x86_64-linux-gnu/bits/xopen_lim.h
@@ -487,11 +478,11 @@ CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/local/inc
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/local/include/opencv4/opencv2/video/background_segm.hpp
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/local/include/opencv4/opencv2/video/tracking.hpp
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: /usr/local/include/opencv4/opencv2/videoio.hpp
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o.Release.cmake
+CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o.debug.cmake
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o: ../src/SlicCudaHost.cu
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --blue --bold --progress-dir=/home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building NVCC (Device) object CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o"
 	cd /home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src && /usr/bin/cmake -E make_directory /home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/.
-	cd /home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src && /usr/bin/cmake -D verbose:BOOL=$(VERBOSE) -D build_configuration:STRING=Release -D generated_file:STRING=/home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/./SlicCuda_generated_SlicCudaHost.cu.o -D generated_cubin_file:STRING=/home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/./SlicCuda_generated_SlicCudaHost.cu.o.cubin.txt -P /home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o.Release.cmake
+	cd /home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src && /usr/bin/cmake -D verbose:BOOL=$(VERBOSE) -D build_configuration:STRING=debug -D generated_file:STRING=/home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/./SlicCuda_generated_SlicCudaHost.cu.o -D generated_cubin_file:STRING=/home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/./SlicCuda_generated_SlicCudaHost.cu.o.cubin.txt -P /home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o.debug.cmake
 
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: ../include/SlicCudaDevice.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: ../src/SlicCudaDevice.cu
@@ -545,22 +536,14 @@ CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/math-vector.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/mathcalls.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/mathinline.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/posix1_lim.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/posix2_lim.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/pthreadtypes-arch.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/select.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/select2.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/stdint-intn.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/stdio.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/stdio2.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/stdio_lim.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/stdlib-bsearch.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/stdlib-float.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/stdlib.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/string_fortified.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/strings_fortified.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/sys_errlist.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/sysmacros.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/include/x86_64-linux-gnu/bits/thread-shared-types.h
@@ -654,11 +637,11 @@ CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/local/c
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/local/cuda/include/vector_functions.h
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/local/cuda/include/vector_functions.hpp
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: /usr/local/cuda/include/vector_types.h
-CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o.Release.cmake
+CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o.debug.cmake
 CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o: ../src/SlicCudaDevice.cu
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --blue --bold --progress-dir=/home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building NVCC (Device) object CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o"
 	cd /home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src && /usr/bin/cmake -E make_directory /home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/.
-	cd /home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src && /usr/bin/cmake -D verbose:BOOL=$(VERBOSE) -D build_configuration:STRING=Release -D generated_file:STRING=/home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/./SlicCuda_generated_SlicCudaDevice.cu.o -D generated_cubin_file:STRING=/home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/./SlicCuda_generated_SlicCudaDevice.cu.o.cubin.txt -P /home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o.Release.cmake
+	cd /home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src && /usr/bin/cmake -D verbose:BOOL=$(VERBOSE) -D build_configuration:STRING=debug -D generated_file:STRING=/home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/./SlicCuda_generated_SlicCudaDevice.cu.o -D generated_cubin_file:STRING=/home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/./SlicCuda_generated_SlicCudaDevice.cu.o.cubin.txt -P /home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o.debug.cmake
 
 CMakeFiles/SlicCuda.dir/src/main.cpp.o: CMakeFiles/SlicCuda.dir/flags.make
 CMakeFiles/SlicCuda.dir/src/main.cpp.o: ../src/main.cpp

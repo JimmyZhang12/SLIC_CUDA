@@ -15,6 +15,7 @@ francois.xavier.derue@gmail.com
 
 #pragma once
 #include <opencv2/opencv.hpp>
+#include <vector>
 #include "cuda_runtime.h"
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
@@ -43,6 +44,8 @@ private:
 	float* h_fClusters;
 	float* h_fLabels;
 
+	float assignment_time_count=0.0;
+
 	// gpu variable
 	float* d_fClusters;
 	float* d_fLabels;
@@ -69,6 +72,7 @@ private:
 	*/
 	void gpuInitClusters();
 	void downloadLabels();
+	void downloadClusters();
 
 	/*
 	Assign the closest centroid to each pixel
@@ -79,6 +83,7 @@ private:
 	Update the clusters' centroids with the belonging pixels
 	*/
 	void update(); 
+
 
 public:
 	SlicCuda();
@@ -94,7 +99,11 @@ public:
 	Segment a frame in superpixel
 	*/
 	void segment(const cv::Mat& frame);
-	cv::Mat getLabels(){ return cv::Mat(m_FrameHeight, m_FrameWidth, CV_32F, h_fLabels); }
+
+	cv::Mat getLabels(){
+		downloadLabels();
+		return cv::Mat(m_FrameHeight, m_FrameWidth, CV_32F, h_fLabels); 
+	}
 
 	/*
 	Discard orphan clusters (optional)
