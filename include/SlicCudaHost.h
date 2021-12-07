@@ -19,6 +19,50 @@ francois.xavier.derue@gmail.com
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 
+
+
+
+class Point2 {
+public:
+    __host__ __device__ Point2() {}
+    __host__ __device__ Point2(int _x, int _y)
+    : x(_x), y(_y) {}
+    
+    int x, y;
+    int error = INT_MAX;
+
+    __host__ __device__ bool isInvalid() {
+            bool b1 = (x == -1);
+        bool b2 = (y == -1);
+        return b1 && b2;
+    }
+    
+};
+struct Triangle
+{
+    Point2 points[3];
+    int num_points = 0;
+    bool removed = false;
+    __host__ __device__
+    Triangle(){}
+
+    __host__ __device__
+    Triangle(Point2 a, Point2 b, Point2 c) {
+        points[0] = a;
+        points[1] = b;
+        points[2] = c;
+    }
+
+    __host__ __device__
+    Point2 center() {
+        int x = (points[0].x + points[1].x + points[2].x) / 3;
+        int y = (points[0].y + points[1].y + points[2].y) / 3;
+        return Point2(x, y);
+        // return (points[0] + points[1] + points[2]) / 3;
+    }
+
+};
+
 class SlicCuda {
 public:
 	enum InitType{
@@ -103,6 +147,9 @@ public:
 
 	// cpu draw
 	static void displayBound(cv::Mat& image, const float* labels, const cv::Scalar colour);
+
+    static void displayPoint(cv::Mat& image, const float* labels, const cv::Scalar colour);
+    static void displayPoint1(cv::Mat& image, const float* labels, const cv::Scalar colour);
 
 	static std::string type2str(int type);
 

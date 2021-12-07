@@ -1,6 +1,12 @@
 #include "SlicCudaHost.h"
 #include "SlicCudaDevice.h"
 #include <chrono>
+#include <thrust/scan.h>
+#include <thrust/functional.h>
+#include <thrust/execution_policy.h>
+#include <vector>
+#include <bits/stdc++.h>
+#include "delaunator.h"
 
 using namespace std;
 using namespace cv;
@@ -273,6 +279,910 @@ int SlicCuda::enforceConnectivity() {
 	return nbSpxNoOrphan;
 }
 
+int NextPower2_CPU(int v)
+{
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v++;
+    return v;
+}
+
+__device__ __inline__ int Index(Point2 p, int col)
+{
+    return p.y * col + p.x;
+}
+
+__device__ int dist(const Point2 &a, const Point2 &b)
+{
+    int dx = a.x - b.x;
+    int dy = a.y - b.y;
+    return dx*dx + dy*dy;
+}
+
+
+__global__ void voronoi_kernel(Point2* device_owner, int stepsize, int rows, int cols)
+{   
+    int c = blockIdx.x * blockDim.x + threadIdx.x;
+    int r = blockIdx.y * blockDim.y + threadIdx.y;
+    if (c >= cols || r >= rows)
+        return;
+
+    Point2 now_point(c, r);
+
+    for (int i=-1; i<=1; ++i) {
+        for (int j=-1; j<=1; ++j) {
+            if (i == 0 && j == 0) continue;
+            
+            int c1 = c + i * stepsize;
+            int r1 = r + j * stepsize;
+
+            if (c1 >= 0 && c1 < cols && r1 >= 0 && r1 < rows) {
+                Point2 loc_device_owner = device_owner[r1 * cols + c1];
+                if(loc_device_owner.isInvalid())
+                    continue;
+
+                Point2 now_device_owner = device_owner[Index(now_point, cols)];
+                int cand_dist = dist(loc_device_owner, now_point);
+
+                if(now_device_owner.isInvalid() || cand_dist < dist(now_device_owner, now_point))
+                    device_owner[Index(now_point, cols)] = loc_device_owner;
+            }
+        }
+    } 
+}
+
+__host__ __device__ Point2 operator + (const Point2 &a, const Point2 &b)
+{
+    return Point2(a.x + b.x, a.y + b.y);
+}
+
+__host__ __device__ Point2 operator * (const Point2 &a, int b)
+{
+    return Point2(a.x * b, a.y * b);
+}
+
+__host__ __device__ Point2 operator / (const Point2 &a, int b)
+{
+    return Point2(a.x / b, a.y / b);
+}
+
+__host__ __device__ bool operator == (const Point2 &a, const Point2 &b)
+{
+    return a.x == b.x && a.y == b.y;
+}
+
+__device__ void count_colors(Point2 now_point, Point2 device_owner[], Point2 colors[4], int &numColors, int cols)
+{
+    Point2 neighbor_dir[] = {Point2(1, 0), Point2(0, 1), Point2(1, 1)};
+
+    colors[0] = device_owner[Index(now_point, cols)];
+    numColors = 1;
+    for(Point2 now_dir: neighbor_dir)
+    {
+        Point2 next_point = now_point + now_dir;
+        Point2 newColor = device_owner[Index(next_point, cols)];
+        bool exist = false;
+        for (int i = 0; i < numColors; i++)
+        {
+            if (newColor == colors[i])
+            {
+                exist = true;
+                break;
+            }
+        }
+        if (!exist)
+        {
+            colors[numColors] = newColor;
+            numColors ++;
+        }
+    }
+}
+
+__global__ void count_triangle_kernel(Point2* device_owner, int rows, int cols, int* triangle_count)
+{
+    int c = blockIdx.x * blockDim.x + threadIdx.x;
+    int r = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (c >= cols-1 || r >= rows-1)
+        return;
+
+    Point2 now_point(c, r);
+
+    Point2 colors[4] = {Point2(-1, -1), Point2(-1, -1), Point2(-1, -1), Point2(-1, -1)};
+    int numColors;
+    count_colors(now_point, device_owner, colors, numColors, cols);
+
+    if(numColors == 3)
+        triangle_count[Index(now_point, cols)] = 1;
+    else if(numColors == 4)
+        triangle_count[Index(now_point, cols)] = 2;
+    else
+        triangle_count[Index(now_point, cols)] = 0;
+}
+
+__global__ void triangle_kernel(Point2* device_owner, Triangle* device_triangles, int rows, int cols, int* device_sum_triangles)
+{
+    int c = blockIdx.x * blockDim.x + threadIdx.x;
+    int r = blockIdx.y * blockDim.y + threadIdx.y;
+
+    // __shared__ int block_triangle_index;
+    // if (c == 0 && r == 0) {
+    //     block_triangle_index = 0;
+    // }
+    // __syncthreads();
+
+    if (c >= cols-1 || r >= rows-1)
+        return;
+
+    Point2 now_point(c, r);
+
+    Point2 colors[4] = {Point2(-1, -1), Point2(-1, -1), Point2(-1, -1), Point2(-1, -1)};
+    int numColors;
+    count_colors(now_point, device_owner, colors, numColors, cols);
+
+    int index = Index(now_point, cols);
+    int prev_triangle_cnt = (index == 0)? 0: device_sum_triangles[index-1];
+
+    if(numColors == 3)
+    {
+        Triangle triangle;
+        for(int i=0; i<3; i++)
+        {
+            triangle.points[i] = colors[i];
+        }
+        // device_triangles[atomicAdd(&block_triangle_index, 1)] = triangle;
+        device_triangles[prev_triangle_cnt] = triangle;
+    }
+    else if(numColors == 4)
+    {
+        Triangle triangle1(device_owner[Index(now_point, cols)],
+                           device_owner[Index(now_point + Point2(1, 0), cols)],
+                           device_owner[Index(now_point + Point2(0, 1), cols)]);
+
+        Triangle triangle2(device_owner[Index(now_point + Point2(1, 0), cols)],
+                           device_owner[Index(now_point + Point2(0, 1), cols)],
+                           device_owner[Index(now_point + Point2(1, 1), cols)]);
+
+        // device_triangles[atomicAdd(&block_triangle_index, 1)] = triangle1;
+        // device_triangles[atomicAdd(&block_triangle_index, 1)] = triangle2;
+        device_triangles[prev_triangle_cnt] = triangle1;
+        device_triangles[prev_triangle_cnt + 1] = triangle2;
+    }
+    return;
+}
+
+
+__device__ __inline__ int signGPU(Point2 p1, Point2 p2, Point2 p3)
+{
+    return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+}
+
+__device__ bool PointInTriangleGPU(Point2 pt, Point2 v1, Point2 v2, Point2 v3)
+{
+    int d1, d2, d3;
+    bool has_neg, has_pos;
+
+    d1 = signGPU(pt, v1, v2);
+    d2 = signGPU(pt, v2, v3);
+    d3 = signGPU(pt, v3, v1);
+
+    has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+    has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+
+    return !(has_neg && has_pos);
+}
+
+
+__device__ int binary_search_right(int col_l, int col_r, int row, const Point2& p1, const Point2& p2, const Point2& p3) {
+    while (col_l < col_r) {
+        int col_m = col_l + (col_r - col_l) / 2;
+        Point2 p(col_m, row);
+        if (PointInTriangleGPU(p, p1, p2, p3)) {
+            col_l = col_m + 1;
+        } else {
+            col_r = col_m;
+        }
+    }
+    return col_l;
+}
+
+
+__global__ void draw_triangle_kernel1(Triangle* device_triangles, int num_triangles, uint8_t* device_img, uint8_t* device_tri_img, int rows, int cols)
+{
+    int triIdx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (triIdx >= num_triangles)
+        return;
+
+    Triangle tri = device_triangles[triIdx];
+    if (tri.removed) return;
+    int minX = min(tri.points[0].x, tri.points[1].x);
+    minX = min(minX, tri.points[2].x);
+    int minY = min(tri.points[0].y, tri.points[1].y);
+    minY = min(minY, tri.points[2].y);    
+    int maxX = max(tri.points[0].x, tri.points[1].x);
+    maxX = max(maxX, tri.points[2].x);
+    int maxY = max(tri.points[0].y, tri.points[1].y);
+    maxY = max(maxY, tri.points[2].y);  
+    Point2 p = tri.center();
+    int imgIdx = (p.y * cols + p.x) * 3;
+
+    uint8_t pr = device_img[imgIdx];
+    uint8_t pg = device_img[imgIdx + 1];
+    uint8_t pb = device_img[imgIdx + 2];
+
+    for (int r = minY; r < maxY; ++r)
+    {
+        for (int c = minX; c < maxX; ++c)
+        {
+            if (r>=0 && r<rows && c>=0 && c<cols) {
+                Point2 pt(c, r);
+                if (PointInTriangleGPU(pt, tri.points[0], tri.points[1], tri.points[2]))    
+                { 
+                    device_triangles[triIdx].num_points ++;
+                    int col_l = c;
+                    // int col_r = binary_search_right(col_l, maxX, r, tri.points[0], tri.points[1], tri.points[2]);
+                    // for (int c=col_l; c<col_r; ++c) {
+                        int triImgIdx = (r * cols + c) * 3;
+                        device_tri_img[triImgIdx] = pr; 
+                        device_tri_img[triImgIdx + 1] = pg; 
+                        device_tri_img[triImgIdx + 2] = pb; 
+                    // }    
+                    // break;
+                    // int triImgIdx = (r * cols + c) * 3;
+                    // device_tri_img[triImgIdx] = pr; 
+                    // device_tri_img[triImgIdx + 1] = pg; 
+                    // device_tri_img[triImgIdx + 2] = pb; 
+                }   
+            }
+            
+        }       
+        
+
+    }
+}
+
+
+bool isNoCornerArround( std::vector<std::vector<unsigned char>> & corner, const int& height, const int& width, const int& x, const int& y )
+{
+	if(x==0 || x==width-1 || y==0 || y==height-1) return true;
+
+	if( corner[y+1][x+1] == 255 ) return false;
+	if( corner[y+1][x] == 255 ) return false;
+	if( corner[y+1][x-1] == 255 ) return false;
+	if( corner[y][x-1] == 255 ) return false;
+	if( corner[y-1][x-1] == 255 ) return false;
+	if( corner[y-1][x] == 255 ) return false;
+	if( corner[y-1][x+1] == 255 ) return false;
+	if( corner[y][x+1] == 255 ) return false;
+	
+	return true;
+}
+
+std::vector<int> get_triangles(Triangle *triangles, int num_triangles, int i, int j) {
+    std::vector<int> loc;
+
+    for (int t=0; t<num_triangles; ++t) {
+        if (triangles[t].num_points > 0 && !triangles->removed) {
+            for (Point2 p: triangles[t].points) {
+                if (p.y == i && p.x == j) {
+                    loc.push_back(t);
+                    break;
+                }
+            }
+        }
+    }
+    return loc;
+}
+
+int calculate_error(cv::Mat& image, const int height, const int width, Triangle *triangles, int num_triangles, int i, int j) {
+
+    std::vector<int> loc = get_triangles(triangles, num_triangles, i, j);
+
+    int error = 0;
+    Vec3b curr = image.at<cv::Vec3b>(i, j);
+    int curr_r = curr[0], curr_g = curr[1], curr_b = curr[2];
+    for (int ti: loc) {
+        auto t = triangles[ti];
+        Point2 p = t.center();
+
+        Vec3b color = image.at<cv::Vec3b>(p.y, p.x);
+        int r = color[0], g = color[1], b = color[2];
+        error += pow(curr_r - r, 2) * t.num_points + pow(curr_g - g, 2) * t.num_points + pow(curr_b - b, 2) * t.num_points;
+    }
+    return error;
+}
+
+void all_t(int rows, int cols, Point2* d_ownerMap, Point2* h_deviceOnwers, int *d_triangle_sum, uint8_t* d_tri_img, uint8_t* d_img, int &num_triangles, cv::Mat& image, Triangle* h_triangles) {
+    cudaMemcpy(d_ownerMap, h_deviceOnwers, sizeof(Point2) * rows * cols, cudaMemcpyHostToDevice);
+
+        unsigned int n = 32;
+        dim3 blockDim(n, n);
+        dim3 gridDim((cols + n - 1) / n, (rows + n - 1) / n);
+
+        int start_stepsize = NextPower2_CPU(min(rows, cols)) / 2;
+        for(int stepsize = start_stepsize; stepsize>=1; stepsize /= 2)
+        {
+            voronoi_kernel<<<gridDim, blockDim>>>(d_ownerMap, stepsize, rows, cols);
+            gpuErrchk(cudaDeviceSynchronize());
+        }
+
+        int *d_triangle_cnts;
+        cudaMalloc(&d_triangle_cnts, sizeof(int) * rows * cols);
+
+        count_triangle_kernel<<<gridDim, blockDim>>>(d_ownerMap, rows, cols, d_triangle_cnts);
+        gpuErrchk(cudaDeviceSynchronize());
+
+        // int* device_sum_triangles;
+        thrust::inclusive_scan(thrust::device, (int*)d_triangle_cnts, (int*)d_triangle_cnts + rows*cols, (int*)d_triangle_sum);
+
+        cudaMemcpy(&num_triangles, &((int*)d_triangle_sum)[rows*cols-1], sizeof(int), cudaMemcpyDeviceToHost);
+
+        cudaFree(d_triangle_cnts);
+
+        // num_triangles = 6000;
+
+        Triangle *d_triangles;
+        cudaMalloc(&d_triangles, sizeof(Triangle) * (num_triangles));
+        triangle_kernel<<<gridDim, blockDim>>>(d_ownerMap, d_triangles, rows, cols, d_triangle_sum);
+        gpuErrchk(cudaDeviceSynchronize());
+
+
+        cudaMemcpy(d_img, image.data, sizeof(uint8_t)*rows * cols*3, cudaMemcpyHostToDevice);
+
+        // cudaMemcpy(num_triangles, &((int*)d_triangle_sum)[rows*cols-1], sizeof(int), cudaMemcpyDeviceToHost);
+
+        // cudaMalloc(d_triangles, sizeof(Triangle) * (*num_triangles));
+        // triangle_kernel<<<gridDim, blockDim>>>((Point*)d_owner_map, (Triangle*)(*d_triangles), rows, cols, (int*)d_triangle_sum);
+        // gpuErrchk(cudaDeviceSynchronize());
+        int threadPerBlock1 = 96;
+        int gridDim1 = (num_triangles - 1) / threadPerBlock1 + 1;
+
+        draw_triangle_kernel1<<<gridDim1, threadPerBlock1>>>((Triangle*)d_triangles, num_triangles, (uint8_t*)d_img, (uint8_t*)d_tri_img, rows, cols); 
+        gpuErrchk(cudaDeviceSynchronize());  
+        cudaMemcpy(h_triangles, d_triangles, sizeof(Triangle) * num_triangles, cudaMemcpyDeviceToHost);
+
+        cudaFree(d_triangles);
+}
+
+struct NodeEqual
+{
+    bool operator()(const Point2& a, const Point2& b) { return a.x == b.x && a.y == b.y; }
+};
+
+void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scalar colour) {
+
+	const int dx8[8] = { -1, -1, 0, 1, 1, 1, 0, -1 };
+	const int dy8[8] = { 0, -1, -1, -1, 0, 1, 1, 1 };
+
+	/* Initialize the contour vector and the matrix detailing whether a pixel
+	* is already taken to be a contour. */
+
+    std::vector<std::vector<unsigned char>> zeros(image.rows, std::vector<unsigned char>(image.cols, 0));
+    std::vector<std::vector<unsigned char>> corner(image.rows, std::vector<unsigned char>(image.cols, 0));
+    std::vector<std::vector<int>> errors(image.rows, std::vector<int>(image.cols, INT_MAX));
+
+    Point2 *h_deviceOnwers = new Point2[image.rows * image.cols];
+
+	vector<cv::Point> contours;
+	vector<vector<bool> > istaken;
+	for (int i = 0; i < image.rows; i++) {
+		vector<bool> nb;
+		for (int j = 0; j < image.cols; j++) {
+			nb.push_back(false);
+		}
+		istaken.push_back(nb);
+	}
+    int width = image.cols, height = image.rows;
+	// Go through all the pixels.
+	for (int i = 0; i<image.rows; i++) {
+		for (int j = 0; j < image.cols; j++) {
+            if ((j % 100 == 0 && i == 0 ) || (i % 120 == 0 && j == 0)) {
+                contours.push_back(cv::Point(j, i));
+				istaken[i][j] = true;
+                continue;
+            }
+
+			int nr_p = 0;
+			// Compare the pixel to its 8 neighbours.
+			for (int k = 0; k < 8; k++) {
+				int x = j + dx8[k], y = i + dy8[k];
+
+				if (x >= 0 && x < image.cols && y >= 0 && y < image.rows) {
+					if (istaken[y][x] == false && labels[i*image.cols + j] != labels[y*image.cols + x]) {
+						nr_p += 1;
+					}
+				}
+			}
+			/* Add the pixel to the contour list if desired. */
+			// if (nr_p > 3) {
+			// 	contours.push_back(cv::Point(j, i));
+			// 	istaken[i][j] = true;
+			// }
+
+            if (nr_p > 1) {
+                istaken[i][j] = true;
+                zeros[i][j] = 255;
+            }
+
+		}
+	}
+
+	for (int i = 0; i<image.rows; i++) {
+		for (int j = 0; j < image.cols; j++) {
+            if( zeros[i][j]==255 ) {
+                std::map<int,int> map;
+                int count = 1;
+                for(int p=0; p<=1; p++) for(int q=0; q<=1; q++) {
+                    int ny = i + p;
+                    int nx = j + q;
+                    if( nx>=0 && nx<width && ny>=0 && ny<height ) {
+                        if( map.find(labels[ny*width+nx])==map.end() ) {
+                            map.insert(pair<int,int>(labels[ny*width+nx],count));
+                            count++;
+                        }
+                    }
+                }
+                if( count > 4) {
+                    if( isNoCornerArround(corner,height,width,j, i) ) {
+                        corner[i][j] = 255;
+                    }
+                }
+            }
+
+		}
+	}
+
+	corner[0][0] = 255;
+	corner[height-1][0] = 255;
+	corner[0][width-1] = 255;
+	corner[height-1][width-1] = 255;
+	for(int y=0; y<height; y++) {
+		if( zeros[y][0]==255 ) {
+			corner[y][0] = 255;
+		}
+		if( zeros[y][width-1]==255 ) {
+			corner[y][width-1] = 255;
+		}
+	}
+
+	for(int x=0; x<width; x++) {
+		if( zeros[0][x]==255 ) {
+			corner[0][x] = 255;
+		}
+		if( zeros[height-1][x]==255 ) {
+			corner[height-1][x] = 255;
+		}
+	}
+
+
+    // printf("Vertices size: %d\n", contours.size());
+	// Draw the contour pixels. 
+	// for (int i = 0; i < (int)contours.size(); i++) {
+	// 	image.at<cv::Vec3b>(contours[i].y, contours[i].x) = cv::Vec3b((uchar)colour[0], (uchar)colour[1], (uchar)colour[2]);
+	// }
+    // return;
+    int num_vert = 0;
+    for (int i = 0; i<image.rows; i++) {
+		for (int j = 0; j < image.cols; j++) {
+            if (corner[i][j] == 255) {
+                h_deviceOnwers[i * image.cols + j].x = j;
+                h_deviceOnwers[i * image.cols + j].y = i;
+                //  = Point2(i, j);
+                num_vert ++;
+            } else {
+
+                h_deviceOnwers[i * image.cols + j] = Point2(-1, -1);
+            }
+        }
+    }
+    // for (int i = 0; i < (int)contours.size(); i++) {
+    //     int r = contours[i].y, c = contours[i].x;
+    // }
+    printf("Num vertices: %d\n", num_vert);
+    
+    int rows = image.rows, cols = image.cols;
+
+    Point2 *d_ownerMap;
+    int *device_sum_triangles, *d_triangle_sum;
+    uint8_t *d_img, *d_tri_img;
+    cudaMalloc(&d_triangle_sum, sizeof(int) * rows * cols);
+    cudaMalloc(&d_ownerMap, sizeof(Point2) * rows * cols);
+    cudaMalloc(&device_sum_triangles, sizeof(int) * rows * cols);
+    cudaMalloc(&d_img, sizeof(uint8_t) * rows * cols * 3);
+    cudaMalloc(&d_tri_img, sizeof(uint8_t) * rows * cols * 3);
+
+    Triangle *h_triangles = new Triangle[20000];
+    
+    int num_triangles;
+    all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, d_img, num_triangles, image, h_triangles);
+    for (int nv=num_vert; nv>1024; --nv)  {
+
+        int min_err = INT_MAX, min_i = -1, min_j = -1;
+        for (int i=0; i<rows; ++i) {
+            for (int j=0; j<cols; ++j) {
+                if (h_deviceOnwers[i*cols + j].isInvalid()) continue;
+                int err = calculate_error(image, rows, cols, h_triangles, num_triangles, i, j);
+                h_deviceOnwers[i * cols + j].error = err;
+                if (err == 0) {
+                    min_i = i; min_j = j; 
+                    break;
+                }
+                if (err < min_err) {
+                    min_err = err;
+                    min_i = i; min_j = j; 
+                }
+            }
+        }
+        if (min_i > -1) {
+            h_deviceOnwers[min_i * cols + min_j].x = -1;
+            h_deviceOnwers[min_i * cols + min_j].y = -1;
+            all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, d_img, num_triangles, image, h_triangles);
+            // cudaMemcpy(image.data, d_tri_img, sizeof(uint8_t) * rows * cols, cudaMemcpyDeviceToHost);
+            cudaDeviceSynchronize();
+        } else {
+            break;
+        }
+        // printf("NUmber vertices after: %d\n", num_vert);
+        // all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, d_img, num_triangles, image, h_triangles);
+        // printf("Num triangles: %d\n", num_triangles);
+        if (nv % 64 == 0) printf("current nb points: %d\n", nv);
+        if (nv % 128 == 0) {
+            Mat tmp;
+            tmp.create(cv::Size2d(cols, rows), CV_8UC3);
+            cudaMemcpy(tmp.data, d_tri_img, sizeof(uint8_t) * rows * cols * 3, cudaMemcpyDeviceToHost);
+            imwrite("/home/shun/Desktop/segment.jpg", tmp);
+        }
+    }
+
+
+    cudaMemcpy(image.data, d_tri_img, sizeof(uint8_t) * rows * cols * 3, cudaMemcpyDeviceToHost);
+
+
+    cudaFree(d_img);
+    cudaFree(d_tri_img);
+    cudaFree(d_triangle_sum);
+    cudaFree(device_sum_triangles);
+    cudaFree(d_ownerMap);
+    delete[]h_triangles;
+    // cudaFree(d_ownerMap);
+}
+
+void SlicCuda::displayPoint(cv::Mat& image, const float* labels, const cv::Scalar colour) {
+
+	const int dx8[8] = { -1, -1, 0, 1, 1, 1, 0, -1 };
+	const int dy8[8] = { 0, -1, -1, -1, 0, 1, 1, 1 };
+
+	/* Initialize the contour vector and the matrix detailing whether a pixel
+	* is already taken to be a contour. */
+
+    std::vector<std::vector<unsigned char>> zeros(image.rows, std::vector<unsigned char>(image.cols, 0));
+    std::vector<std::vector<unsigned char>> corner(image.rows, std::vector<unsigned char>(image.cols, 0));
+    std::vector<std::vector<int>> errors(image.rows, std::vector<int>(image.cols, INT_MAX));
+
+    Point2 *h_deviceOnwers = new Point2[image.rows * image.cols];
+
+	vector<cv::Point> contours;
+	vector<vector<bool> > istaken;
+	for (int i = 0; i < image.rows; i++) {
+		vector<bool> nb;
+		for (int j = 0; j < image.cols; j++) {
+			nb.push_back(false);
+		}
+		istaken.push_back(nb);
+	}
+    int width = image.cols, height = image.rows;
+	// Go through all the pixels.
+	for (int i = 0; i<image.rows; i++) {
+		for (int j = 0; j < image.cols; j++) {
+            if ((j % 100 == 0 && i == 0 ) || (i % 120 == 0 && j == 0)) {
+                contours.push_back(cv::Point(j, i));
+				istaken[i][j] = true;
+                continue;
+            }
+
+			int nr_p = 0;
+			// Compare the pixel to its 8 neighbours.
+			for (int k = 0; k < 8; k++) {
+				int x = j + dx8[k], y = i + dy8[k];
+
+				if (x >= 0 && x < image.cols && y >= 0 && y < image.rows) {
+					if (istaken[y][x] == false && labels[i*image.cols + j] != labels[y*image.cols + x]) {
+						nr_p += 1;
+					}
+				}
+			}
+			/* Add the pixel to the contour list if desired. */
+			// if (nr_p > 3) {
+			// 	contours.push_back(cv::Point(j, i));
+			// 	istaken[i][j] = true;
+			// }
+
+            if (nr_p > 1) {
+                istaken[i][j] = true;
+                zeros[i][j] = 255;
+            }
+
+		}
+	}
+
+	for (int i = 0; i<image.rows; i++) {
+		for (int j = 0; j < image.cols; j++) {
+            if( zeros[i][j]==255 ) {
+                std::map<int,int> map;
+                int count = 1;
+                for(int p=0; p<=1; p++) for(int q=0; q<=1; q++) {
+                    int ny = i + p;
+                    int nx = j + q;
+                    if( nx>=0 && nx<width && ny>=0 && ny<height ) {
+                        if( map.find(labels[ny*width+nx])==map.end() ) {
+                            map.insert(pair<int,int>(labels[ny*width+nx],count));
+                            count++;
+                        }
+                    }
+                }
+                if( count > 4) {
+                    if( isNoCornerArround(corner,height,width,j, i) ) {
+                        corner[i][j] = 255;
+                    }
+                }
+            }
+
+		}
+	}
+
+	corner[0][0] = 255;
+	corner[height-1][0] = 255;
+	corner[0][width-1] = 255;
+	corner[height-1][width-1] = 255;
+	for(int y=0; y<height; y++) {
+		if( zeros[y][0]==255 ) {
+			corner[y][0] = 255;
+		}
+		if( zeros[y][width-1]==255 ) {
+			corner[y][width-1] = 255;
+		}
+	}
+
+	for(int x=0; x<width; x++) {
+		if( zeros[0][x]==255 ) {
+			corner[0][x] = 255;
+		}
+		if( zeros[height-1][x]==255 ) {
+			corner[height-1][x] = 255;
+		}
+	}
+
+
+    // printf("Vertices size: %d\n", contours.size());
+	// Draw the contour pixels. 
+	// for (int i = 0; i < (int)contours.size(); i++) {
+	// 	image.at<cv::Vec3b>(contours[i].y, contours[i].x) = cv::Vec3b((uchar)colour[0], (uchar)colour[1], (uchar)colour[2]);
+	// }
+    // return;
+    int num_vert = 0;
+    for (int i = 0; i<image.rows; i++) {
+		for (int j = 0; j < image.cols; j++) {
+            if (corner[i][j] == 255) {
+                h_deviceOnwers[i * image.cols + j].x = j;
+                h_deviceOnwers[i * image.cols + j].y = i;
+                //  = Point2(i, j);
+                num_vert ++;
+            } else {
+
+                h_deviceOnwers[i * image.cols + j] = Point2(-1, -1);
+            }
+        }
+    }
+    // for (int i = 0; i < (int)contours.size(); i++) {
+    //     int r = contours[i].y, c = contours[i].x;
+    // }
+    printf("Num vertices: %d\n", num_vert);
+    
+    int rows = image.rows, cols = image.cols;
+
+    Point2 *d_ownerMap;
+    int *device_sum_triangles, *d_triangle_sum;
+    uint8_t *d_img, *d_tri_img;
+    cudaMalloc(&d_triangle_sum, sizeof(int) * rows * cols);
+    cudaMalloc(&d_ownerMap, sizeof(Point2) * rows * cols);
+    cudaMalloc(&device_sum_triangles, sizeof(int) * rows * cols);
+    cudaMalloc(&d_img, sizeof(uint8_t) * rows * cols * 3);
+    cudaMalloc(&d_tri_img, sizeof(uint8_t) * rows * cols * 3);
+
+    Triangle *h_triangles = new Triangle[20000];
+    
+    int num_triangles;
+    all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, d_img, num_triangles, image, h_triangles);
+    Triangle* d_triangles;
+    cudaMalloc(&d_triangles, sizeof(Triangle) * num_triangles);
+    for (int nv=num_vert; nv>1024; --nv)  {
+        // cudaMemcpy(d_ownerMap, h_deviceOnwers, sizeof(Point2) * rows * cols, cudaMemcpyHostToDevice);
+
+        // unsigned int n = 32;
+        // dim3 blockDim(n, n);
+        // dim3 gridDim((cols + n - 1) / n, (rows + n - 1) / n);
+
+        // int start_stepsize = NextPower2_CPU(min(rows, cols)) / 2;
+        // for(int stepsize = start_stepsize; stepsize>=1; stepsize /= 2)
+        // {
+        //     voronoi_kernel<<<gridDim, blockDim>>>(d_ownerMap, stepsize, rows, cols);
+        //     gpuErrchk(cudaDeviceSynchronize());
+        // }
+
+
+        // count_triangle_kernel<<<gridDim, blockDim>>>(d_ownerMap, rows, cols, d_triangle_cnts);
+        // gpuErrchk(cudaDeviceSynchronize());
+
+        // // int* device_sum_triangles;
+        // thrust::inclusive_scan(thrust::device, (int*)d_triangle_cnts, (int*)d_triangle_cnts + rows*cols, (int*)d_triangle_sum);
+
+        // cudaMemcpy(&num_triangles, &((int*)d_triangle_sum)[rows*cols-1], sizeof(int), cudaMemcpyDeviceToHost);
+
+        // printf("Num triangles: %d\n", num_triangles);
+
+        // // num_triangles = 6000;
+
+        // Triangle *d_triangles;
+        // cudaMalloc(&d_triangles, sizeof(Triangle) * (num_triangles));
+        // triangle_kernel<<<gridDim, blockDim>>>(d_ownerMap, d_triangles, rows, cols, d_triangle_sum);
+        // gpuErrchk(cudaDeviceSynchronize());
+
+
+        // cudaMemcpy(d_img, image.data, sizeof(uint8_t)*rows * cols*3, cudaMemcpyHostToDevice);
+
+        // // cudaMemcpy(num_triangles, &((int*)d_triangle_sum)[rows*cols-1], sizeof(int), cudaMemcpyDeviceToHost);
+
+        // // cudaMalloc(d_triangles, sizeof(Triangle) * (*num_triangles));
+        // // triangle_kernel<<<gridDim, blockDim>>>((Point*)d_owner_map, (Triangle*)(*d_triangles), rows, cols, (int*)d_triangle_sum);
+        // // gpuErrchk(cudaDeviceSynchronize());
+        // int threadPerBlock1 = 96;
+        // int gridDim1 = (num_triangles - 1) / threadPerBlock1 + 1;
+
+        // draw_triangle_kernel<<<gridDim1, threadPerBlock1>>>((Triangle*)d_triangles, num_triangles, (uint8_t*)d_img, (uint8_t*)d_tri_img, rows, cols); 
+        // cudaMemcpy(h_triangles, d_triangles, sizeof(Triangle) * num_triangles, cudaMemcpyHostToDevice);
+        // gpuErrchk(cudaDeviceSynchronize());  
+
+        // cudaFree(d_triangles);
+        // printf("Points left: %d\n", nv);
+        // break;
+
+        // std::vector<int, Point2> errors;
+
+        int min_err = INT_MAX, min_i = -1, min_j = -1;
+        for (int i=0; i<rows; ++i) {
+            for (int j=0; j<cols; ++j) {
+                if (h_deviceOnwers[i*cols + j].isInvalid()) continue;
+                int err = calculate_error(image, rows, cols, h_triangles, num_triangles, i, j);
+                h_deviceOnwers[i * cols + j].error = err;
+                if (err == 0) {
+                    min_i = i; min_j = j; 
+                    break;
+                }
+                if (err < min_err) {
+                    min_err = err;
+                    min_i = i; min_j = j; 
+                }
+            }
+        }
+        if (min_i > -1) {
+            h_deviceOnwers[min_i * cols + min_j].x = -1;
+            h_deviceOnwers[min_i * cols + min_j].y = -1;
+
+            auto triangle_indexes = get_triangles(h_triangles, num_triangles, min_i, min_j);
+            std::set<std::pair<int, int>> all_points;
+            
+            std::vector<double> coords;
+            for (auto ti: triangle_indexes) {
+                auto t = h_triangles[ti];
+                h_triangles[ti].removed = true;
+                // printf(">> triagnle: \n");
+                for (auto p: t.points) {
+                // printf("\tpoint: %d, %d\n", p.y, p.x);
+                    auto p1 = std::make_pair(p.y, p.x);
+                    if (p.y == min_i && p.x == min_j) continue;
+                    if (all_points.find(p1) == all_points.end()) {
+                        all_points.insert(p1);
+                        coords.push_back(p.y);
+                        coords.push_back(p.x);
+                    }
+                }
+            }
+            bool res = true;
+            delaunator::Delaunator d(coords, res);
+            if (!res) {
+                for (auto ti: triangle_indexes) {
+                    h_triangles[ti].removed = false;
+                    printf(">> triagnle: \n");
+                    for (auto p: h_triangles[ti].points) {
+                        printf("\tpoint: %d, %d\n", p.y, p.x);
+                    //     auto p1 = std::make_pair(p.y, p.x);
+                    //     if (p.y == min_i && p.x == min_j) continue;
+                    //     if (all_points.find(p1) == all_points.end()) {
+                    //         all_points.insert(p1);
+                    //         coords.push_back(p.y);
+                    //         coords.push_back(p.x);
+                    //     }
+                    }
+                }
+                continue;
+            }
+            assert(d.triangles.size() / 3 <= triangle_indexes.size());
+            for(std::size_t i = 0; i < d.triangles.size(); i+=3) {
+                int base = i/3;
+                int ti = triangle_indexes[base];
+                h_triangles[ti].points[0].y = d.coords[2 * d.triangles[i]];
+                h_triangles[ti].points[0].x = d.coords[2 * d.triangles[i] + 1];
+                h_triangles[ti].points[1].y = d.coords[2 * d.triangles[i + 1]];    //tx1
+                h_triangles[ti].points[1].x = d.coords[2 * d.triangles[i + 1] + 1];//ty1
+                h_triangles[ti].points[2].y = d.coords[2 * d.triangles[i + 2]];   //tx2
+                h_triangles[ti].points[2].x = d.coords[2 * d.triangles[i + 2] + 1]; //ty2
+                h_triangles[ti].removed = false;
+                // printf(
+                //     "Triangle points: [[%f, %f], [%f, %f], [%f, %f]]\n",
+                //     d.coords[2 * d.triangles[i]],        //tx0
+                //     d.coords[2 * d.triangles[i] + 1],    //ty0
+                //     d.coords[2 * d.triangles[i + 1]],    //tx1
+                //     d.coords[2 * d.triangles[i + 1] + 1],//ty1
+                //     d.coords[2 * d.triangles[i + 2]],    //tx2
+                //     d.coords[2 * d.triangles[i + 2] + 1] //ty2
+                // );
+            }     
+            // for (auto ti: triangle_indexes) {
+            //     auto t = h_triangles[ti];
+            //     // h_triangles[ti].removed = true;
+            //     printf(">> triagnle removed %d\n", t.removed);
+            //     for (auto p: t.points) {
+            //     printf("\tpoint: %d, %d\n", p.y, p.x);
+            //         // auto p1 = std::make_pair(p.y, p.x);
+
+            //         // if (all_points.find(p1) == all_points.end()) {
+            //         //     all_points.insert(p1);
+            //         //     coords.push_back(p.y);
+            //         //     coords.push_back(p.x);
+            //         // }
+            //     }
+            // }
+
+            int threadPerBlock1 = 96;
+            int gridDim1 = (num_triangles - 1) / threadPerBlock1 + 1;
+
+            
+            cudaMemcpy(d_triangles, h_triangles, sizeof(Triangle) * num_triangles, cudaMemcpyHostToDevice);
+            draw_triangle_kernel1<<<gridDim1, threadPerBlock1>>>((Triangle*)d_triangles, num_triangles, (uint8_t*)d_img, (uint8_t*)d_tri_img, rows, cols); 
+            cudaMemcpy(h_triangles, d_triangles, sizeof(Triangle) * num_triangles, cudaMemcpyDeviceToHost);
+            cudaMemcpy(image.data, d_tri_img, sizeof(uint8_t)*rows * cols*3, cudaMemcpyDeviceToHost);
+            cudaDeviceSynchronize();
+
+            // printf("remove %d %d\n", min_i, min_j);
+        } else {
+            break;
+        }
+        // printf("NUmber vertices after: %d\n", num_vert);
+        // all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, d_img, num_triangles, image, h_triangles);
+        // printf("Num triangles: %d\n", num_triangles);
+        if (nv % 64 == 0) printf("current nb points: %d\n", nv);
+        if (nv % 1024 == 0) {
+            printf("Try wriing\n");
+            imwrite("/home/shun/Desktop/segment.jpg", image);
+        }
+    }
+
+
+
+
+    cudaFree(d_img);
+    cudaFree(d_tri_img);
+    cudaFree(d_triangle_sum);
+    cudaFree(device_sum_triangles);
+    cudaFree(d_ownerMap);
+    delete[]h_triangles;
+    // cudaFree(d_ownerMap);
+}
 
 void SlicCuda::displayBound(cv::Mat& image, const float* labels, const cv::Scalar colour){
 	const int dx8[8] = { -1, -1, 0, 1, 1, 1, 0, -1 };
@@ -305,7 +1215,7 @@ void SlicCuda::displayBound(cv::Mat& image, const float* labels, const cv::Scala
 				}
 			}
 			/* Add the pixel to the contour list if desired. */
-			if (nr_p >= 2) {
+			if (nr_p == 4) {
 				contours.push_back(cv::Point(j, i));
 				istaken[i][j] = true;
 			}
