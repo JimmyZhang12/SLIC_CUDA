@@ -64,12 +64,12 @@ void SlicCuda::segment(const Mat& frameBGR) {
 	gpuInitClusters();
 
 	for (int i = 0; i<m_nbIteration; i++) {
-		auto t0 = std::chrono::high_resolution_clock::now();
+		// auto t0 = std::chrono::high_resolution_clock::now();
 		assignment();
 		update();
-		auto t1 = std::chrono::high_resolution_clock::now();
-		double time = std::chrono::duration<double>(t1-t0).count() ;
-		cout<<std::fixed<<i<< ": Total segment Time: "<< time <<"s"<<endl;
+		// auto t1 = std::chrono::high_resolution_clock::now();
+		// double time = std::chrono::duration<double>(t1-t0).count() ;
+		// cout<<std::fixed<<i<< ": Total segment Time: "<< time <<"s"<<endl;
 	}
 	downloadLabels();
 }
@@ -182,9 +182,9 @@ void SlicCuda::assignment(){
 	int numBlock = iDivUp(m_FrameWidth,PENCILS_PER_BLOCK);
 	dim3 blockPerGrid(numBlock);
 	dim3 threadPerBlock(PENCILS_PER_BLOCK,VERTICAL_SPLIT);
-	printf("Assignment GRID (%d,%d), BLOCK (%d,%d)\n",
-		 blockPerGrid.x, blockPerGrid.y,
-		 threadPerBlock.x, threadPerBlock.y);
+	// printf("Assignment GRID (%d,%d), BLOCK (%d,%d)\n",
+	// 	 blockPerGrid.x, blockPerGrid.y,
+	// 	 threadPerBlock.x, threadPerBlock.y);
 
 
 	float wc2 = m_wc * m_wc;
@@ -204,21 +204,16 @@ void SlicCuda::assignment(){
 	auto t1 = std::chrono::high_resolution_clock::now();
 	double time = std::chrono::duration<double>(t1-t0).count();
 	
-	cout<<std::fixed<<"\tAssignment Time: "<< time <<"s"<<endl;
-	assignment_time_count += time;
+	// cout<<std::fixed<<"\tAssignment Time: "<< time <<"s"<<endl;
+	// assignment_time_count += time;
 }
 
 void SlicCuda::update(){
 	dim3 threadsPerBlock(m_deviceProp.maxThreadsPerBlock);
 	dim3 numBlocks(iDivUp(m_nbSpx, m_deviceProp.maxThreadsPerBlock));
-
-	auto t0 = std::chrono::high_resolution_clock::now();
 	kUpdate << <numBlocks, threadsPerBlock >> >(m_nbSpx, d_fClusters, d_fAccAtt);
 	cudaDeviceSynchronize();
-	auto t1 = std::chrono::high_resolution_clock::now();
-	double time = std::chrono::duration<double>(t1-t0).count();
-	
-	cout<<std::fixed<<"\tUpdate Time: "<< time <<"s"<<endl;
+
 }
 
 void SlicCuda::downloadLabels(){
@@ -682,7 +677,9 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
 		istaken.push_back(nb);
 	}
     int width = image.cols, height = image.rows;
+
 	// Go through all the pixels.
+    auto t0 = std::chrono::high_resolution_clock::now();
 	for (int i = 0; i<image.rows; i++) {
 		for (int j = 0; j < image.cols; j++) {
             if ((j % 100 == 0 && i == 0 ) || (i % 120 == 0 && j == 0)) {
@@ -702,17 +699,10 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
 					}
 				}
 			}
-			/* Add the pixel to the contour list if desired. */
-			// if (nr_p > 3) {
-			// 	contours.push_back(cv::Point(j, i));
-			// 	istaken[i][j] = true;
-			// }
-
             if (nr_p > 1) {
                 istaken[i][j] = true;
                 zeros[i][j] = 255;
             }
-
 		}
 	}
 
@@ -731,7 +721,7 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
                         }
                     }
                 }
-                if( count > 4) {
+                if( count >4) {
                     if( isNoCornerArround(corner,height,width,j, i) ) {
                         corner[i][j] = 255;
                     }
@@ -763,6 +753,9 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
 		}
 	}
 
+	auto t1 = std::chrono::high_resolution_clock::now();
+	double time = std::chrono::duration<double>(t1-t0).count();
+	cout<<std::fixed<<"Corner Selection Time: "<< time <<"s"<<endl;
 
     // printf("Vertices size: %d\n", contours.size());
 	// Draw the contour pixels. 
@@ -1219,7 +1212,7 @@ void SlicCuda::displayBound(cv::Mat& image, const float* labels, const cv::Scala
 				}
 			}
 			/* Add the pixel to the contour list if desired. */
-			if (nr_p >= 2) {
+			if (nr_p > 1) {
 				contours.push_back(cv::Point(j, i));
 				istaken[i][j] = true;
 			}

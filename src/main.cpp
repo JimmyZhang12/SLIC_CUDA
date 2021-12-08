@@ -33,7 +33,7 @@ int main() {
 
 	auto t1 = std::chrono::high_resolution_clock::now();
 	double time = std::chrono::duration<double>(t1-t0).count() ;
-	// cout << "Frame " << frame.size() <<" "<< i+1 << "/" << endFrame << ", Time: "<< time <<"s"<<endl;
+	cout << "Frame " << frame.size() << "Segment Time: "<< time <<"s"<<endl;
 
 	oSlicCuda.enforceConnectivity();
 

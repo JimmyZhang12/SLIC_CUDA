@@ -98,5 +98,10 @@ set(SOURCE_FILES "src/SlicCudaHost.cu" "src/SlicCudaDevice.cu" "include/SlicCuda
 cuda_add_executable(SlicCuda ${SOURCE_FILES} ${COMMON_FILES} "src/main.cpp")
 
 
+# set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
+# set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
+# set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -G")
+
+
 target_include_directories(SlicCuda PUBLIC "include")
 target_link_libraries(SlicCuda ${OpenCV_LIBS})
