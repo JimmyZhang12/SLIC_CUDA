@@ -82,11 +82,13 @@ private:
 	float m_wc;
 	int m_nbIteration;
 	InitType m_InitType;
+	
 
 	//cpu buffer
 	float* h_fClusters;
 	float* h_fLabels;
-
+	float assignment_time_count=0.0;
+	
 	// gpu variable
 	float* d_fClusters;
 	float* d_fLabels;

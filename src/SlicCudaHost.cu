@@ -176,18 +176,21 @@ void SlicCuda::gpuInitClusters() {
 }
 
 void SlicCuda::assignment(){
-	int hMax = m_deviceProp.maxThreadsPerBlock / m_SpxHeight;
-	int nBlockPerClust = iDivUp(m_SpxHeight, hMax);
+	int PENCILS_PER_BLOCK = 32;
+	int VERTICAL_SPLIT = 8;
 
-	dim3 blockPerGrid(m_nbSpx, nBlockPerClust);
-	dim3 threadPerBlock(m_SpxWidth, std::min(m_SpxHeight, hMax));
-	// printf("GRID (%d,%d), BLOCK (%d,%d)\n", m_nbSpx, nBlockPerClust,m_SpxWidth, std::min(m_SpxHeight, hMax));
-	CV_Assert(threadPerBlock.x >= 3 && threadPerBlock.y >= 3);
+	int numBlock = iDivUp(m_FrameWidth,PENCILS_PER_BLOCK);
+	dim3 blockPerGrid(numBlock);
+	dim3 threadPerBlock(PENCILS_PER_BLOCK,VERTICAL_SPLIT);
+	printf("Assignment GRID (%d,%d), BLOCK (%d,%d)\n",
+		 blockPerGrid.x, blockPerGrid.y,
+		 threadPerBlock.x, threadPerBlock.y);
+
 
 	float wc2 = m_wc * m_wc;
 
 	auto t0 = std::chrono::high_resolution_clock::now();
-	kAssignment << < blockPerGrid, threadPerBlock >> >(oSurfFrameLab,
+	kAssignment_stencil << < blockPerGrid, threadPerBlock >> >(oSurfFrameLab,
 		d_fClusters,
 		m_FrameWidth, 
 		m_FrameHeight, 
@@ -202,6 +205,7 @@ void SlicCuda::assignment(){
 	double time = std::chrono::duration<double>(t1-t0).count();
 	
 	cout<<std::fixed<<"\tAssignment Time: "<< time <<"s"<<endl;
+	assignment_time_count += time;
 }
 
 void SlicCuda::update(){
@@ -1215,7 +1219,7 @@ void SlicCuda::displayBound(cv::Mat& image, const float* labels, const cv::Scala
 				}
 			}
 			/* Add the pixel to the contour list if desired. */
-			if (nr_p == 4) {
+			if (nr_p >= 2) {
 				contours.push_back(cv::Point(j, i));
 				istaken[i][j] = true;
 			}
