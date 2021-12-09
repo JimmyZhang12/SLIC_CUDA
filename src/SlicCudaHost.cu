@@ -579,6 +579,9 @@ std::vector<int> get_triangles(Triangle *triangles, int num_triangles, int i, in
 }
 
 int calculate_error(cv::Mat& image, const int height, const int width, Triangle *triangles, int num_triangles, int i, int j) {
+    //for each point
+    //calculate the error
+    //report min
 
     std::vector<int> loc = get_triangles(triangles, num_triangles, i, j);
 
@@ -721,7 +724,7 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
                         }
                     }
                 }
-                if( count >4) {
+                if( count >=3) {
                     if( isNoCornerArround(corner,height,width,j, i) ) {
                         corner[i][j] = 255;
                     }
@@ -793,11 +796,16 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
     cudaMalloc(&d_img, sizeof(uint8_t) * rows * cols * 3);
     cudaMalloc(&d_tri_img, sizeof(uint8_t) * rows * cols * 3);
 
-    Triangle *h_triangles = new Triangle[20000];
+    Triangle *h_triangles = new Triangle[500000];
     
     int num_triangles;
+
+    //h_deviceOnwers: the vertices
+    //h_triangles: total number of triangles
+
     all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, d_img, num_triangles, image, h_triangles);
     for (int nv=num_vert; nv>1024; --nv)  {
+        t0 = std::chrono::high_resolution_clock::now();
 
         int min_err = INT_MAX, min_i = -1, min_j = -1;
         for (int i=0; i<rows; ++i) {
@@ -815,11 +823,14 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
                 }
             }
         }
+        t1 = std::chrono::high_resolution_clock::now();
+        time = std::chrono::duration<double>(t1-t0).count();
+        std::cout << "triangle processing time: " << time << '\n';
         if (min_i > -1) {
             h_deviceOnwers[min_i * cols + min_j].x = -1;
             h_deviceOnwers[min_i * cols + min_j].y = -1;
+
             all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, d_img, num_triangles, image, h_triangles);
-            // cudaMemcpy(image.data, d_tri_img, sizeof(uint8_t) * rows * cols, cudaMemcpyDeviceToHost);
             cudaDeviceSynchronize();
         } else {
             break;
@@ -1179,6 +1190,10 @@ void SlicCuda::displayPoint(cv::Mat& image, const float* labels, const cv::Scala
     cudaFree(d_ownerMap);
     delete[]h_triangles;
     // cudaFree(d_ownerMap);
+}
+
+void SlicCuda::localAdaptiveThinning(){
+    
 }
 
 void SlicCuda::displayBound(cv::Mat& image, const float* labels, const cv::Scalar colour){

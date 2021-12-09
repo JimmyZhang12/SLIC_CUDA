@@ -21,7 +21,7 @@ int main() {
 	Mat frame;
 	frame = imread("/home/jimmy/ece508/data/image.jpg", IMREAD_COLOR);
 
-	int diamSpx = sqrt(frame.rows*frame.cols/10000); //want about 10
+	int diamSpx = sqrt(frame.rows*frame.cols/1000); //want about 10
 
 	SlicCuda oSlicCuda;
 	oSlicCuda.initialize(frame, diamSpx, initType, wc, nIteration);
