@@ -61,6 +61,47 @@ struct Triangle
         // return (points[0] + points[1] + points[2]) / 3;
     }
 
+
+    __host__ __device__
+    int min_x() {
+		int tmp = points[0].x<points[1].x?points[0].x:points[1].x;
+		return (tmp<points[2].x)?tmp:points[2].x;
+    }
+    __host__ __device__
+    int max_x() {
+		int tmp = points[0].x>points[1].x?points[0].x:points[1].x;
+		return (tmp>points[2].x)?tmp:points[2].x;
+	}
+    __host__ __device__
+    int min_y() {
+		int tmp = points[0].y<points[1].y?points[0].y:points[1].y;
+		return (tmp<points[2].y)?tmp:points[2].y;
+    }
+    __host__ __device__
+    int max_y() {
+		int tmp = points[0].y>points[1].y?points[0].y:points[1].y;
+		return (tmp>points[2].y)?tmp:points[2].y;
+    }
+
+
+    __host__ __device__
+	float area(Point2 p1, Point2 p2, Point2 p3){
+		return abs((p1.x*(p2.y-p3.y) + p2.x*(p3.y-p1.y)+ p3.x*(p1.y-p2.y))/2.0);
+	}	
+	//https://www.geeksforgeeks.org/check-whether-a-given-point-lies-inside-a-triangle-or-not/
+    __host__ __device__
+	bool isInside(Point2 point){
+		/* Calculate area of triangle ABC */
+		float A = area(points[0],points[1],points[3]);
+		/* Calculate area of triangle PBC */ 
+		float A1 = area(point,points[1],points[3]);
+		/* Calculate area of triangle PAC */ 
+		float A2 = area(points[0],point,points[3]);
+		/* Calculate area of triangle PAB */  
+		float A3 = area(points[0],points[1],point);
+		/* Check if sum of A1, A2 and A3 is same as A */
+		return (A == A1 + A2 + A3);
+	}
 };
 
 class SlicCuda {
@@ -152,6 +193,9 @@ public:
 
     static void displayPoint(cv::Mat& image, const float* labels, const cv::Scalar colour);
     static void displayPoint1(cv::Mat& image, const float* labels, const cv::Scalar colour);
+
+	static void CalcLocalError(cv::Mat& image, Point2 *h_deviceOnwers, Triangle *triangles, int num_triangles);
+	static std::vector<Triangle> getAdjacentTriangles(Point2 point, Triangle *triangles, int num_triangles);
 
 	static std::string type2str(int type);
 
