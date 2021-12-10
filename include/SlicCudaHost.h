@@ -15,6 +15,7 @@ francois.xavier.derue@gmail.com
 
 #pragma once
 #include <opencv2/opencv.hpp>
+#include <iostream>
 #include "cuda_runtime.h"
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
@@ -32,10 +33,14 @@ public:
     int error = INT_MAX;
 
     __host__ __device__ bool isInvalid() {
-            bool b1 = (x == -1);
+		bool b1 = (x == -1);
         bool b2 = (y == -1);
         return b1 && b2;
     }
+	friend std::ostream &operator<<( std::ostream &output, const Point2 &p ) { 
+		output << "(" << p.x<< "," << p.y << ")";
+		return output;          
+	}
     
 };
 struct Triangle
@@ -192,9 +197,9 @@ public:
 	static void displayBound(cv::Mat& image, const float* labels, const cv::Scalar colour);
 
     static void displayPoint(cv::Mat& image, const float* labels, const cv::Scalar colour);
-    static void displayPoint1(cv::Mat& image, const float* labels, const cv::Scalar colour);
+    static void displayPoint1(cv::Mat& image, cv::Mat& tri_image, const float* labels, const cv::Scalar colour);
 
-	static void CalcLocalError(cv::Mat& image, Point2 *h_deviceOnwers, Triangle *triangles, int num_triangles);
+	static Point2 CalcLocalError(cv::Mat& image, cv::Mat& h_tri_img, Point2 *h_deviceOnwers, Triangle *triangles, int num_triangles, int* error);
 	static std::vector<Triangle> getAdjacentTriangles(Point2 point, Triangle *triangles, int num_triangles);
 
 	static std::string type2str(int type);

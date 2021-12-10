@@ -656,7 +656,7 @@ struct NodeEqual
     bool operator()(const Point2& a, const Point2& b) { return a.x == b.x && a.y == b.y; }
 };
 
-void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scalar colour) {
+void SlicCuda::displayPoint1(cv::Mat& image, cv::Mat& h_tri_img, const float* labels, const cv::Scalar colour) {
 
 	const int dx8[8] = { -1, -1, 0, 1, 1, 1, 0, -1 };
 	const int dy8[8] = { 0, -1, -1, -1, 0, 1, 1, 1 };
@@ -801,34 +801,22 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
     int num_triangles;
 
 
-
     all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, d_img, num_triangles, image, h_triangles);
-    
-    for (int nv=num_vert; nv>1024; --nv)  {
-        // t0 = std::chrono::high_resolution_clock::now();
+    cudaMemcpy(h_tri_img.data, d_tri_img, sizeof(uint8_t) * rows * cols * 3, cudaMemcpyDeviceToHost);
 
-        int min_err = INT_MAX, min_i = -1, min_j = -1;
-        for (int i=0; i<rows; ++i) {
-            for (int j=0; j<cols; ++j) {
-                if (h_deviceOnwers[i*cols + j].isInvalid()) continue;
-                int err = calculate_error(image, rows, cols, h_triangles, num_triangles, i, j);
-                h_deviceOnwers[i * cols + j].error = err;
-                if (err == 0) {
-                    min_i = i; min_j = j; 
-                    break;
-                }
-                if (err < min_err) {
-                    min_err = err;
-                    min_i = i; min_j = j; 
-                }
-            }
-        }
-        // t1 = std::chrono::high_resolution_clock::now();
-        // time = std::chrono::duration<double>(t1-t0).count();
-        // std::cout << "triangle processing time: " << time << '\n';
-        if (min_i > -1) {
-            h_deviceOnwers[min_i * cols + min_j].x = -1;
-            h_deviceOnwers[min_i * cols + min_j].y = -1;
+
+    for (int nv=num_vert; nv>1024; --nv)  {
+        t0 = std::chrono::high_resolution_clock::now();
+        int error;
+        Point2 min_error_point = CalcLocalError(image, h_tri_img, h_deviceOnwers, h_triangles, num_triangles, &error);
+        t1 = std::chrono::high_resolution_clock::now();
+        time = std::chrono::duration<double>(t1-t0).count();
+        cout<<std::fixed<<nv<<": Error Calc Time: "<< time <<"s | ";
+        cout<<"Removed point " <<min_error_point<<", Error: " <<error<< endl;
+
+        if (min_error_point.y > -1) {
+            h_deviceOnwers[min_error_point.y * cols + min_error_point.x].x = -1;
+            h_deviceOnwers[min_error_point.y * cols + min_error_point.x].y = -1;
 
             all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, d_img, num_triangles, image, h_triangles);
             cudaDeviceSynchronize();
@@ -848,7 +836,7 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
     }
 
 
-    cudaMemcpy(image.data, d_tri_img, sizeof(uint8_t) * rows * cols * 3, cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_tri_img.data, d_tri_img, sizeof(uint8_t) * rows * cols * 3, cudaMemcpyDeviceToHost);
 
 
     cudaFree(d_img);
@@ -861,33 +849,75 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
 }
 
 
-void SlicCuda::CalcLocalError(cv::Mat& image, Point2 *h_deviceOnwers, Triangle *triangles, int num_triangles){
- 
-    //for each point associate with all adjecent triangles
- 
+Point2 SlicCuda::CalcLocalError(cv::Mat& image, cv::Mat& tri_image, Point2 *h_deviceOnwers, Triangle *triangles, int num_triangles, int* error){ 
     //for each vertex calculate its error
+    Point2 min_error_point(-1,-1);
+    int min_error = INT_MAX;
+
     int cols = image.cols;
     int rows = image.rows;
     for (int x=0; x<cols; ++x) {
         for (int y=0; y<rows; ++y) {
             if (h_deviceOnwers[y*cols + x].isInvalid()) continue;
-            Point2 point(x,y);
-            std::vector<Triangle> adjTriangles = getAdjacentTriangles(point, triangles, num_triangles);
-            int min_x, max_x, min_y, max_y;
 
+            //find the local box containing all adjacent triangles
+            int min_x=INT_MAX, max_x=0, min_y=INT_MAX, max_y=0;
 
-        
+            std::vector<Triangle> adjTriangles = getAdjacentTriangles(Point2(x,y), triangles, num_triangles);
+            // printf("adjTriangles size: %d\n", adjTriangles.size());
+
+            for (Triangle adjT : adjTriangles){
+                // cout << "Triangle " << adjT.points[0]<<" "  << adjT.points[1]<<" " << adjT.points[2]<<" "<<endl;
+                min_x = (min_x<adjT.min_x())?min_x:adjT.min_x();
+                max_x = (max_x>adjT.max_x())?max_x:adjT.max_x();
+                min_y = (min_y<adjT.min_y())?min_y:adjT.min_y();
+                max_y = (max_y>adjT.max_y())?max_y:adjT.max_y();
+            }
+            
+            //TODO: THIS IS A HACK! Find out why triangles sometimes have wrong coordinates
+            min_x = (min_x<0)?0:min_x;
+            max_x = (max_x>cols)?cols:max_x;
+            min_y = (min_y<0)?0:min_y;
+            max_y = (max_y>rows)?rows:max_y;    
+            
+            assert(min_x < max_x && min_x>=0 && max_x < cols);
+            assert(min_y < max_y && min_y>=0 && max_y < rows);
+            
+            int error = 0;
+            // printf("(%d %d) (%d %d),box:%d %d %d %d\n",x,y,cols,rows,min_x,max_x,min_y,max_y);
+            //caculate the error
+            for (int lx=min_x; lx<max_x; ++lx) {
+                for (int ly=min_y; ly<max_y; ++ly) {
+                    //test to see if local point in acutally in an adj triangle
+                    bool in_triangle = false;
+                    for (Triangle adjT : adjTriangles){
+                        in_triangle = in_triangle || (adjT.isInside(Point2(lx,ly)));
+                    }
+                    if (!in_triangle) continue;
+
+                    Vec3b color = image.at<cv::Vec3b>(ly,lx);
+                    Vec3b color_tri = tri_image.at<cv::Vec3b>(ly,lx);
+                    int r = color[0], g = color[1], b = color[2];
+                    int r_t = color_tri[0], g_t = color_tri[1], b_t = color_tri[2];
+                    error += ((r-r_t)*(r-r_t))
+                            + ((g-g_t)*(g-g_t))
+                            + ((b-b_t)*(b-b_t));
+                }
+            }
+            h_deviceOnwers[y*cols + x].error = error;
+            if (error < min_error){
+                min_error = error;
+                min_error_point.x = x;
+                min_error_point.y = y;
+            }
+            // printf("(%d %d),box:%d %d %d %d, x %d, y %d, error %d\n",x,y,min_x,max_x,min_y,max_y, x, y, error);
+
         }
     }
-
-    //remove a vertex and generate the local mesh
-    //form local box
-
-    //generate the mesh 
-    //generate the error
-
-
+    *error = min_error;
+    return min_error_point;
 }
+
 std::vector<Triangle> SlicCuda::getAdjacentTriangles(Point2 point, Triangle *triangles, int num_triangles){
     vector<Triangle> adjTriangles;
     for (int i=0; i<num_triangles; i++){
@@ -900,6 +930,7 @@ std::vector<Triangle> SlicCuda::getAdjacentTriangles(Point2 point, Triangle *tri
     }
     return adjTriangles;
 }
+
 
 void SlicCuda::displayBound(cv::Mat& image, const float* labels, const cv::Scalar colour){
 	const int dx8[8] = { -1, -1, 0, 1, 1, 1, 0, -1 };

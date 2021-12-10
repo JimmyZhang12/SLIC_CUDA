@@ -56,8 +56,8 @@ set(CMAKE_MAKEFILE_OUTPUTS
 set(CMAKE_MAKEFILE_PRODUCTS
   "CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o.cmake.pre-gen"
   "CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o.cmake.pre-gen"
-  "CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o.Release.cmake"
-  "CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o.Release.cmake"
+  "CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaHost.cu.o.Debug.cmake"
+  "CMakeFiles/SlicCuda.dir/src/SlicCuda_generated_SlicCudaDevice.cu.o.Debug.cmake"
   "CMakeFiles/CMakeDirectoryInformation.cmake"
   )
 

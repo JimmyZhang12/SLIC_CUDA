@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.1.0 FATAL_ERROR)
 project(SuperpixelSegmentation)
 
+set(CMAKE_BUILD_TYPE Debug)
 
 
 set(EXTERNAL_DATA_ROOT "${CMAKE_SOURCE_DIR}/data/" CACHE PATH "External data root folder (this is where all datasets should be located for applications to find them automatically)")
@@ -35,6 +36,7 @@ if(("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU") OR ("${CMAKE_CXX_COMPILER_ID}" ST
     add_definitions(-Wall)
     add_definitions(-Wfatal-errors)
     add_definitions(-ftemplate-depth=900) # already default for gcc, but not for clang
+    add_definitions(-ggdb)
     # check_function_exists(aligned_alloc USE_STL_ALIGNED_ALLOC)
     # if(NOT USE_STL_ALIGNED_ALLOC)
     #     set(USE_STL_ALIGNED_ALLOC 0 CACHE INTERNAL "Have function aligned_alloc")
@@ -97,10 +99,6 @@ CUDA_INCLUDE_DIRECTORIES("${OpenCV_INCLUDE_DIRS}" "${CMAKE_SOURCE_DIR}/include")
 set(SOURCE_FILES "src/SlicCudaHost.cu" "src/SlicCudaDevice.cu" "include/SlicCudaHost.h" "include/SlicCudaDevice.h" "include/delaunator.h")
 cuda_add_executable(SlicCuda ${SOURCE_FILES} ${COMMON_FILES} "src/main.cpp")
 
-
-# set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
-# set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
-# set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -G")
 
 
 target_include_directories(SlicCuda PUBLIC "include")

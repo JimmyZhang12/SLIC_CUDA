@@ -41,9 +41,9 @@ int main() {
 	labels = oSlicCuda.getLabels();
 	auto data = labels.data;
 
-	// SlicCuda::displayBound(frame, (float*)labels.data, Scalar(0, 0, 0));
-	SlicCuda::displayPoint1(frame, (float*)labels.data, Scalar(0, 0, 0));
-	imwrite("/home/jimmy/ece508/segs/image.jpg", frame);
+    Mat tri_image(frame.rows, frame.cols, CV_8UC3);
+	SlicCuda::displayPoint1(frame, tri_image, (float*)labels.data, Scalar(0, 0, 0));
+	imwrite("/home/jimmy/ece508/segs/image.jpg", tri_image);
 
 
 
