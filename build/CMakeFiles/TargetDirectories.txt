@@ -1,3 +1,0 @@
-/home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/rebuild_cache.dir
-/home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/edit_cache.dir
-/home/jimmy/ece508/SLIC_CUDA/build/CMakeFiles/SlicCuda.dir
