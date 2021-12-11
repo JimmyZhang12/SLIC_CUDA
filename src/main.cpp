@@ -19,9 +19,9 @@ int main() {
 
 	//start segmentation
 	Mat frame;
-	frame = imread("/home/jimmy/ece508/data/image.jpg", IMREAD_COLOR);
+	frame = imread("/home/jimmy/ece508/data/flower.jpg", IMREAD_COLOR);
 
-	int diamSpx = sqrt(frame.rows*frame.cols/10000); //want about 10
+	int diamSpx = 32; //want about 10
 
 	SlicCuda oSlicCuda;
 	oSlicCuda.initialize(frame, diamSpx, initType, wc, nIteration);
@@ -42,8 +42,10 @@ int main() {
 	auto data = labels.data;
 
     Mat tri_image(frame.rows, frame.cols, CV_8UC3);
+
+	// SlicCuda::displayBound(frame, (float*)labels.data, Scalar(0, 0, 0));
 	SlicCuda::displayPoint1(frame, tri_image, (float*)labels.data, Scalar(0, 0, 0));
-	imwrite("/home/jimmy/ece508/segs/image.jpg", tri_image);
+	imwrite("/home/jimmy/ece508/segs/flower.jpg", tri_image);
 
 
 

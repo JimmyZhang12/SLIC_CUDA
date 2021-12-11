@@ -199,8 +199,13 @@ public:
     static void displayPoint(cv::Mat& image, const float* labels, const cv::Scalar colour);
     static void displayPoint1(cv::Mat& image, cv::Mat& tri_image, const float* labels, const cv::Scalar colour);
 
-	static Point2 CalcLocalError(cv::Mat& image, cv::Mat& h_tri_img, Point2 *h_deviceOnwers, Triangle *triangles, int num_triangles, int* error);
-	static std::vector<Triangle> getAdjacentTriangles(Point2 point, Triangle *triangles, int num_triangles);
+	//local adaptive thinning functions
+	static void CalcErrorGlobal(cv::Mat& image, cv::Mat& h_tri_img, Point2 *h_deviceOnwers, Triangle *triangles, int num_triangles);
+	static void CalcErrorLocal(cv::Mat& image, cv::Mat& h_tri_img, Point2 *h_deviceOnwers, \
+		Triangle *triangles, int num_triangles, std::vector<Point2> update_points);
+	static Point2 GetMinErrorPoint(Point2 *h_deviceOnwers, int rows, int cols);
+	static std::vector<Point2> GetAdjacentPoints(Point2 point, Triangle *triangles, int num_triangles);
+	static std::vector<Triangle> GetAdjacentTriangles(Point2 point, Triangle *triangles, int num_triangles);
 
 	static std::string type2str(int type);
 
