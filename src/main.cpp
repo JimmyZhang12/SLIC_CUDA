@@ -19,7 +19,7 @@ int main() {
 
 	//start segmentation
 	Mat frame;
-	frame = imread("/home/jimmy/ece508/data/image.jpg", IMREAD_COLOR);
+	frame = imread("/home/shun/Desktop/1080.jpg", IMREAD_COLOR);
 
 	int diamSpx = sqrt(frame.rows*frame.cols/10000); //want about 10
 
@@ -43,7 +43,7 @@ int main() {
 
 	// SlicCuda::displayBound(frame, (float*)labels.data, Scalar(0, 0, 0));
 	SlicCuda::displayPoint1(frame, (float*)labels.data, Scalar(0, 0, 0));
-	imwrite("/home/jimmy/ece508/segs/image.jpg", frame);
+	imwrite("/home/shun/Desktop/segment.jpg", frame);
 
 
 
