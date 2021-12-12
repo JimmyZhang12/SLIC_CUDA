@@ -11,6 +11,7 @@
 using namespace std;
 using namespace cv;
 
+Point2* device_owner_double_buffer;
 
 SlicCuda::SlicCuda(){
 	int nbGpu = 0;
@@ -302,6 +303,60 @@ __device__ int dist(const Point2 &a, const Point2 &b)
     return dx*dx + dy*dy;
 }
 
+__device__ __inline__ bool InBound(Point2 p, int row, int col)
+{
+    return (0 <= p.x && p.x < col && 0<=p.y && p.y < row);
+}
+
+__host__ __device__ Point2 operator + (const Point2 &a, const Point2 &b)
+{
+    return Point2(a.x + b.x, a.y + b.y);
+}
+
+__host__ __device__ Point2 operator * (const Point2 &a, int b)
+{
+    return Point2(a.x * b, a.y * b);
+}
+
+__host__ __device__ Point2 operator / (const Point2 &a, int b)
+{
+    return Point2(a.x / b, a.y / b);
+}
+
+__host__ __device__ bool operator == (const Point2 &a, const Point2 &b)
+{
+    return a.x == b.x && a.y == b.y;
+}
+
+__host__ __device__ bool operator != (const Point2 &a, const Point2 &b)
+{
+    return !(a.x == b.x && a.y == b.y);
+}
+
+__global__ void voronoi_kernel_fixed(const Point2* device_owner, Point2* double_buf, int stepsize, int rows, int cols, Point2 now_dir)
+{   
+    int c = blockIdx.x * blockDim.x + threadIdx.x;
+    int r = blockIdx.y * blockDim.y + threadIdx.y;
+    if (c >= cols || r >= rows)
+        return;
+
+    Point2 now_point(c, r);
+
+    Point2 now_looking = now_point + now_dir * stepsize;
+    if(!InBound(now_looking, rows, cols))
+        return;
+
+    
+    Point2 loc_device_owner = device_owner[Index(now_looking, cols)];
+    Point2 now_device_owner = device_owner[Index(now_point, cols)];
+    if(loc_device_owner.isInvalid())
+        return;
+
+    int cand_dist = dist(loc_device_owner, now_point);
+
+    if(now_device_owner.isInvalid() || cand_dist < dist(now_device_owner, now_point))
+        double_buf[Index(now_point, cols)] = loc_device_owner;
+}
 
 __global__ void voronoi_kernel(Point2* device_owner, int stepsize, int rows, int cols)
 {   
@@ -334,30 +389,6 @@ __global__ void voronoi_kernel(Point2* device_owner, int stepsize, int rows, int
     } 
 }
 
-__host__ __device__ Point2 operator + (const Point2 &a, const Point2 &b)
-{
-    return Point2(a.x + b.x, a.y + b.y);
-}
-
-__host__ __device__ Point2 operator * (const Point2 &a, int b)
-{
-    return Point2(a.x * b, a.y * b);
-}
-
-__host__ __device__ Point2 operator / (const Point2 &a, int b)
-{
-    return Point2(a.x / b, a.y / b);
-}
-
-__host__ __device__ bool operator == (const Point2 &a, const Point2 &b)
-{
-    return a.x == b.x && a.y == b.y;
-}
-
-__host__ __device__ bool operator != (const Point2 &a, const Point2 &b)
-{
-    return !(a.x == b.x && a.y == b.y);
-}
 
 __device__ void count_colors(Point2 now_point, Point2 device_owner[], Point2 colors[4], int &numColors, int cols)
 {
@@ -610,11 +641,19 @@ void all_t(int rows, int cols, Point2* d_ownerMap, Point2* h_deviceOnwers, int *
         unsigned int n = 32;
         dim3 blockDim(n, n);
         dim3 gridDim((cols + n - 1) / n, (rows + n - 1) / n);
+    
+    
+        Point2 dir[] = {Point2(0,1), Point2(0, -1), Point2(1, 0), Point2(-1, 0),
+                    Point2(1,1), Point2(1, -1), Point2(-1, 1), Point2(-1,-1)};
 
         int start_stepsize = NextPower2_CPU(min(rows, cols)) / 2;
         for(int stepsize = start_stepsize; stepsize>=1; stepsize /= 2)
         {
-            voronoi_kernel<<<gridDim, blockDim>>>(d_ownerMap, stepsize, rows, cols);
+            for (Point2 now_dir: dir) {
+                cudaMemcpy(device_owner_double_buffer, d_ownerMap, sizeof(Point) * rows * cols, cudaMemcpyDeviceToDevice);
+                voronoi_kernel_fixed<<<gridDim, blockDim>>>(d_ownerMap, device_owner_double_buffer, stepsize, rows, cols, now_dir);
+                cudaMemcpy(d_ownerMap, device_owner_double_buffer, sizeof(Point) * rows * cols, cudaMemcpyDeviceToDevice);
+            }
             gpuErrchk(cudaDeviceSynchronize());
         }
 
@@ -969,6 +1008,7 @@ void SlicCuda::displayPoint1(cv::Mat& image, cv::Mat& h_tri_img, const float* la
     uint8_t *d_img, *d_tri_img;
     cudaMalloc(&d_triangle_sum, sizeof(int) * rows * cols);
     cudaMalloc(&d_ownerMap, sizeof(Point2) * rows * cols);
+    cudaMalloc(&device_owner_double_buffer, sizeof(Point2) * rows * cols);
     cudaMalloc(&device_sum_triangles, sizeof(int) * rows * cols);
     cudaMalloc(&d_img, sizeof(uint8_t) * rows * cols * 3);
     cudaMalloc(&d_tri_img, sizeof(uint8_t) * rows * cols * 3);
