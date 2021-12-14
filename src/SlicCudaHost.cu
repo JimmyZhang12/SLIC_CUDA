@@ -333,62 +333,6 @@ __host__ __device__ bool operator == (const Point2 &a, const Point2 &b)
     return a.x == b.x && a.y == b.y;
 }
 
-
-__global__ void voronoi_kernel_fixed(const Point2* device_owner, Point2* double_buf, int stepsize, int rows, int cols, Point2 now_dir)
-{   
-    int c = blockIdx.x * blockDim.x + threadIdx.x;
-    int r = blockIdx.y * blockDim.y + threadIdx.y;
-    if (c >= cols || r >= rows)
-        return;
-
-    Point2 now_point(c, r);
-
-    Point2 now_looking = now_point + now_dir * stepsize;
-    if(!InBound(now_looking, rows, cols))
-        return;
-
-    
-    Point2 loc_device_owner = device_owner[Index(now_looking, cols)];
-    Point2 now_device_owner = device_owner[Index(now_point, cols)];
-    if(loc_device_owner.isInvalid())
-        return;
-
-    int cand_dist = dist(loc_device_owner, now_point);
-
-    if(now_device_owner.isInvalid() || cand_dist < dist(now_device_owner, now_point))
-        double_buf[Index(now_point, cols)] = loc_device_owner;
-}
-
-__global__ void voronoi_kernel(Point2* device_owner, int stepsize, int rows, int cols)
-{   
-    int c = blockIdx.x * blockDim.x + threadIdx.x;
-    int r = blockIdx.y * blockDim.y + threadIdx.y;
-    if (c >= cols || r >= rows)
-        return;
-
-    Point2 now_point(c, r);
-
-    for (int i=-1; i<=1; ++i) {
-        for (int j=-1; j<=1; ++j) {
-            if (i == 0 && j == 0) continue;
-            
-            int c1 = c + i * stepsize;
-            int r1 = r + j * stepsize;
-
-            if (c1 >= 0 && c1 < cols && r1 >= 0 && r1 < rows) {
-                Point2 loc_device_owner = device_owner[r1 * cols + c1];
-                if(loc_device_owner.isInvalid())
-                    continue;
-
-                Point2 now_device_owner = device_owner[Index(now_point, cols)];
-                int cand_dist = dist(loc_device_owner, now_point);
-
-                if(now_device_owner.isInvalid() || cand_dist < dist(now_device_owner, now_point))
-                    device_owner[Index(now_point, cols)] = loc_device_owner;
-            }
-        }
-    } 
-}
 __device__ void count_colors(Point2 now_point, Point2 device_owner[], Point2 colors[4], int &numColors, int cols)
 {
     Point2 neighbor_dir[] = {Point2(1, 0), Point2(0, 1), Point2(1, 1)};
@@ -691,34 +635,91 @@ __global__ void calculate_error_gpu(uint8_t *image, Point2 *device_owners, const
     }
 }
 
+
+
+__global__ void voronoi_kernel_fixed(Point2* device_owner, Point2* double_buf, int stepsize, int rows, int cols, bool db)
+{   
+
+    int y_offset[9] = {-1,-1,-1, 0,0,0, 1,1,1};
+    int x_offset[9] = {-1, 0, 1,-1,0,1,-1,0,1};
+
+    int c = blockIdx.x * blockDim.x + threadIdx.x;
+    int r = blockIdx.y * blockDim.y + threadIdx.y;
+
+    Point2 now_point(c, r);
+    Point2 now_owner = db?double_buf[Index(now_point, cols)]:device_owner[Index(now_point, cols)];
+
+    if (c >= cols || r >= rows)
+        return;
+
+    int min_dist = INT_MAX;
+    Point2 closest_point;
+    Point2 closest_owner;
+
+    for (int i=0; i<=9; i++){
+        Point2 looking = now_point + Point2(x_offset[i],y_offset[i]) * stepsize;
+        Point2 looking_owner = db?double_buf[Index(looking, cols)]:device_owner[Index(looking, cols)];
+
+        if(!InBound(looking, rows, cols) || looking_owner.isInvalid())
+            continue;
+
+        int cand_dist = dist(looking_owner, now_point);
+        if((cand_dist < min_dist)){
+            closest_point = looking;
+            min_dist = cand_dist;
+            closest_owner = looking_owner;
+        }
+    }
+    if (min_dist != INT_MAX){
+        if (db)
+            device_owner[Index(now_point, cols)] = closest_owner;
+        else
+            double_buf[Index(now_point, cols)] = closest_owner;
+
+    }
+
+}
+
+
+
+__host__ void launch_voronoi_kernel(Point2* d_ownerMap, int rows, int cols, dim3 gridDim, dim3 blockDim){    
+    int start_stepsize = NextPower2_CPU(min(rows, cols)) / 2;
+    Point2 *double_buf;
+
+    cudaMalloc(&double_buf, sizeof(Point2) * rows * cols);
+    bool db = false;
+    cudaMemcpy(double_buf, d_ownerMap, sizeof(Point2) * rows * cols, cudaMemcpyDeviceToDevice);
+
+    for(int stepsize = start_stepsize; stepsize>=1; stepsize /= 2)
+    {
+        // db = !db;
+        cudaMemcpy(double_buf, d_ownerMap, sizeof(Point2) * rows * cols, cudaMemcpyDeviceToDevice);
+        voronoi_kernel_fixed<<<gridDim, blockDim>>>(d_ownerMap, double_buf, stepsize, rows, cols, db);
+        gpuErrchk(cudaDeviceSynchronize());       
+        cudaMemcpy(d_ownerMap, double_buf, sizeof(Point2) * rows * cols, cudaMemcpyDeviceToDevice);
+    }
+    cudaFree(double_buf);   
+    if (db)
+        cudaMemcpy(d_ownerMap, double_buf, sizeof(Point2) * rows * cols, cudaMemcpyDeviceToDevice);
+
+    check_device_owner<<<(rows * cols - 1) / 128 + 1, 128>>>(d_ownerMap, 1, rows, cols);
+    gpuErrchk(cudaDeviceSynchronize());
+}
+
+
+
 void all_t(int rows, int cols, Point2* d_ownerMap, Point2* h_deviceOnwers, int *d_triangle_sum, uint8_t* d_tri_img, uint8_t* d_img, int &num_triangles, cv::Mat& image, Triangle* h_triangles) {
     cudaMemcpy(d_ownerMap, h_deviceOnwers, sizeof(Point2) * rows * cols, cudaMemcpyHostToDevice);
-
     unsigned int n = 32;
     dim3 blockDim(n, n);
     dim3 gridDim((cols + n - 1) / n, (rows + n - 1) / n);
 
-    Point2 dir[] = {Point2(0,1), Point2(0, -1), Point2(1, 0), Point2(-1, 0),
-                Point2(1,1), Point2(1, -1), Point2(-1, 1), Point2(-1,-1)};
+    auto t0 = std::chrono::high_resolution_clock::now();
+    launch_voronoi_kernel(d_ownerMap, rows, cols, gridDim, blockDim);
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double time = std::chrono::duration<double>(t1-t0).count();
 
-    int start_stepsize = NextPower2_CPU(min(rows, cols)) / 2;
-
-    Point2 *double_buf;
-    cudaMalloc(&double_buf, sizeof(Point2) * rows * cols);
-
-    for(int stepsize = start_stepsize; stepsize>=1; stepsize /= 2)
-    {
-        for (Point2 now_dir: dir) {
-            cudaMemcpy(double_buf, d_ownerMap, sizeof(Point2) * rows * cols, cudaMemcpyDeviceToDevice);
-            voronoi_kernel_fixed<<<gridDim, blockDim>>>(d_ownerMap, double_buf, stepsize, rows, cols, now_dir);
-            cudaMemcpy(d_ownerMap, double_buf, sizeof(Point2) * rows * cols, cudaMemcpyDeviceToDevice);
-        }
-        gpuErrchk(cudaDeviceSynchronize());
-    }
-    check_device_owner<<<(rows * cols - 1) / 128 + 1, 128>>>(d_ownerMap, 1, rows, cols);
-    gpuErrchk(cudaDeviceSynchronize());
-
-    cudaFree(double_buf);    
+    cout<<std::fixed<<"Voronoi Time: "<< time <<"s"<<endl;
 
     int *d_triangle_cnts;
     cudaMalloc(&d_triangle_cnts, sizeof(int) * rows * cols);
@@ -730,7 +731,6 @@ void all_t(int rows, int cols, Point2* d_ownerMap, Point2* h_deviceOnwers, int *
     thrust::inclusive_scan(thrust::device, (int*)d_triangle_cnts, (int*)d_triangle_cnts + rows*cols, (int*)d_triangle_sum);
 
     cudaMemcpy(&num_triangles, &((int*)d_triangle_sum)[rows*cols-1], sizeof(int), cudaMemcpyDeviceToHost);
-
     cudaFree(d_triangle_cnts);
 
     // num_triangles = 6000;

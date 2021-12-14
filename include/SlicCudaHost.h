@@ -151,6 +151,11 @@ public:
 	static void displayBound(cv::Mat& image, const float* labels, const cv::Scalar colour);
 
     static void displayPoint(cv::Mat& image, const float* labels, const cv::Scalar colour);
+
+	static void voronoi_kernel_fixed(Point2* device_owner, Point2* double_buf, int stepsize, int rows, int cols, bool db);
+	static void launch_voronoi_kernel(Point2* d_ownerMap, int rows, int cols, dim3 gridDim, dim3 blockDim);
+
+
     static void displayPoint1(cv::Mat& image, const float* labels, const cv::Scalar colour);
 
 	static std::string type2str(int type);

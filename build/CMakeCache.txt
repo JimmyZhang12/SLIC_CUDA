@@ -20,8 +20,12 @@ BUILD_SHARED_LIBS:BOOL=ON
 //Path to a program.
 CMAKE_AR:FILEPATH=/usr/bin/ar
 
-//Forced project build type
-CMAKE_BUILD_TYPE:STRING=Release
+//Choose the type of build, options are: None(CMAKE_CXX_FLAGS or
+// CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel.
+CMAKE_BUILD_TYPE:STRING=debug
+
+//No help, variable specified on the command line.
+CMAKE_BUILD_VERSION:UNINITIALIZED=debug
 
 //Enable/Disable color output during build.
 CMAKE_COLOR_MAKEFILE:BOOL=ON
