@@ -42,7 +42,8 @@ int main() {
 	auto data = labels.data;
 
 	// SlicCuda::displayBound(frame, (float*)labels.data, Scalar(0, 0, 0));
-	SlicCuda::displayPoint1(frame, (float*)labels.data, Scalar(0, 0, 0));
+	cudaSurfaceObject_t oTexFrameBGRA = oSlicCuda.get_imgtex();
+	SlicCuda::displayPoint1(frame, (float*)labels.data, Scalar(0, 0, 0), oTexFrameBGRA);
 	imwrite("/home/jimmy/ece508/segs/image.jpg", frame);
 
 

@@ -69,6 +69,11 @@ public:
 		SLIC_SIZE, // initialize with a size of spx
 		SLIC_NSPX // initialize with a number of spx
 	};
+
+	cudaSurfaceObject_t get_imgtex(){
+		return oTexFrameBGRA;
+	}
+
 private:
 	const int m_deviceId = 0;
 
@@ -156,7 +161,7 @@ public:
 	static void launch_voronoi_kernel(Point2* d_ownerMap, int rows, int cols, dim3 gridDim, dim3 blockDim);
 
 
-    static void displayPoint1(cv::Mat& image, const float* labels, const cv::Scalar colour);
+    static void displayPoint1(cv::Mat& image, const float* labels, const cv::Scalar colour, cudaTextureObject_t oTexFrameBGRA);
 
 	static std::string type2str(int type);
 

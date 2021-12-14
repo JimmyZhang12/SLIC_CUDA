@@ -608,7 +608,8 @@ __global__ void group_triangle_kernel(Triangle *d_triangles, int num_triangles, 
     }
 }
 
-__global__ void calculate_error_gpu(uint8_t *image, Point2 *device_owners, const int rows, const int cols, Triangle* triangles, int *pixel_triangle_cnt, int *pixel_triangle_indice, int *error) {
+__global__ void calculate_error_gpu(uint8_t *image, Point2 *device_owners, const int rows, const int cols, 
+    Triangle* triangles, int *pixel_triangle_cnt, int *pixel_triangle_indice, int *error, cudaTextureObject_t oTexFrameBGRA) {
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
     if (tid < rows * cols) {
         Point2 p = device_owners[tid];
@@ -618,7 +619,11 @@ __global__ void calculate_error_gpu(uint8_t *image, Point2 *device_owners, const
         }
 
         int img_idx = tid * 3;
-        int r = image[img_idx], g = image[img_idx+1], b = image[img_idx+2];
+
+        uchar4 nPixel = tex2D<uchar4>(oTexFrameBGRA, tid%cols, tid/cols);//inputImg[offset];
+		int b = nPixel.x;
+		int g = nPixel.y;
+		int r = nPixel.z;
 
         int err = 0;
         int n_triangles = pixel_triangle_cnt[tid];
@@ -627,8 +632,11 @@ __global__ void calculate_error_gpu(uint8_t *image, Point2 *device_owners, const
             Triangle t = triangles[triIdx];
             Point2 p = t.center();
             
-            int col_idx = (p.y * cols + p.x) * 3;
-            int pr = image[col_idx], pg = image[col_idx + 1], pb = image[col_idx + 2];
+            uchar4 nPixel = tex2D<uchar4>(oTexFrameBGRA, p.x, p.y);
+            int pb = nPixel.x;
+            int pg = nPixel.y;
+            int pr = nPixel.z;
+            
             err += (pr-r) * (pr-r) * t.num_points + (pg-g) * (pg-g) * t.num_points + (pb-b) * (pb-b) * t.num_points;
         }
         error[tid] = err;
@@ -712,8 +720,8 @@ __host__ void launch_voronoi_kernel(Point2* d_ownerMap, int rows, int cols, dim3
 void all_t(int rows, int cols, Point2* d_ownerMap, Point2* h_deviceOnwers, \
     int *d_triangle_sum, uint8_t* d_tri_img, uint8_t* d_img, int &num_triangles, \
     int *pixel_triangle_cnt, int *pixel_triangle_index, \
-    int *d_triangle_cnts, Triangle *d_triangles) {
-        
+    int *d_triangle_cnts, Triangle *d_triangles, cudaSurfaceObject_t oTexFrameBGRA) {
+
     cudaMemcpy(d_ownerMap, h_deviceOnwers, sizeof(Point2) * rows * cols, cudaMemcpyHostToDevice);
     unsigned int n = 32;
     dim3 blockDim(n, n);
@@ -744,14 +752,14 @@ void all_t(int rows, int cols, Point2* d_ownerMap, Point2* h_deviceOnwers, \
     int num_blocks = (rows * cols - 1) / num_threads + 1;
     cudaMemcpy(d_ownerMap, h_deviceOnwers, sizeof(Point2) * rows * cols, cudaMemcpyHostToDevice);
 
-    calculate_error_gpu<<<num_blocks, num_threads>>>(d_img, d_ownerMap, rows, cols, d_triangles, pixel_triangle_cnt, pixel_triangle_index, global_device_error);
+    calculate_error_gpu<<<num_blocks, num_threads>>>(d_img, d_ownerMap, rows, cols, d_triangles, pixel_triangle_cnt, pixel_triangle_index, global_device_error, oTexFrameBGRA);
     gpuErrchk(cudaDeviceSynchronize());  
     
     thrust::sequence(thrust::device, global_point_mask, global_point_mask + rows * cols, 0);
     thrust::sort_by_key(thrust::device, global_device_error, global_device_error + rows * cols, global_point_mask);
 }
 
-void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scalar colour) {
+void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scalar colour, cudaTextureObject_t oTexFrameBGRA) {
 	const int dx8[8] = { -1, -1, 0, 1, 1, 1, 0, -1 };
 	const int dy8[8] = { 0, -1, -1, -1, 0, 1, 1, 1 };
 
@@ -921,7 +929,7 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
 
     all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, \
         d_img, num_triangles, pixel_triangle_cnt, pixel_triangle_index, \
-        d_triangle_cnts, d_triangles); 
+        d_triangle_cnts, d_triangles, oTexFrameBGRA); 
 
     int iter = 0;
     for (int nv=num_vert; nv>1024; nv-=NUM_POINTS_REMOVAL_PER_ITER,iter++)  {
@@ -935,7 +943,7 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
 
         all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, \
             d_img, num_triangles, pixel_triangle_cnt, pixel_triangle_index, \
-            d_triangle_cnts, d_triangles); 
+            d_triangle_cnts, d_triangles, oTexFrameBGRA); 
 
         if (iter % 32 == 0) printf("current nb points: %d\n", nv);
     }
