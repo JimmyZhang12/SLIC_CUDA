@@ -608,7 +608,7 @@ __global__ void group_triangle_kernel(Triangle *d_triangles, int num_triangles, 
     }
 }
 
-__global__ void calculate_error_gpu(uint8_t *image, Point2 *device_owners, const int rows, const int cols, 
+__global__ void calculate_error_gpu(uint8_t *image, const Point2 *device_owners, const int rows, const int cols, 
     Triangle* triangles, int *pixel_triangle_cnt, int *pixel_triangle_indice, int *error, cudaTextureObject_t oTexFrameBGRA) {
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
     if (tid < rows * cols) {
@@ -714,15 +714,21 @@ __host__ void launch_voronoi_kernel(Point2* d_ownerMap, int rows, int cols, dim3
 
 
 
+__global__ void remove_points(Point2* d_ownerMap, int *errmap){
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    if (idx < NUM_POINTS_REMOVAL_PER_ITER){
+        d_ownerMap[errmap[idx]].x = -1;
+        d_ownerMap[errmap[idx]].y = -1;
+    }
+}
 
 
-
-void all_t(int rows, int cols, Point2* d_ownerMap, Point2* h_deviceOnwers, \
+void all_t(int rows, int cols, Point2* vertices, Point2* d_ownerMap, Point2* h_deviceOnwers, \
     int *d_triangle_sum, uint8_t* d_tri_img, uint8_t* d_img, int &num_triangles, \
     int *pixel_triangle_cnt, int *pixel_triangle_index, \
     int *d_triangle_cnts, Triangle *d_triangles, cudaSurfaceObject_t oTexFrameBGRA) {
 
-    cudaMemcpy(d_ownerMap, h_deviceOnwers, sizeof(Point2) * rows * cols, cudaMemcpyHostToDevice);
+
     unsigned int n = 32;
     dim3 blockDim(n, n);
     dim3 gridDim((cols + n - 1) / n, (rows + n - 1) / n);
@@ -750,13 +756,20 @@ void all_t(int rows, int cols, Point2* d_ownerMap, Point2* h_deviceOnwers, \
 
     int num_threads = 96;
     int num_blocks = (rows * cols - 1) / num_threads + 1;
-    cudaMemcpy(d_ownerMap, h_deviceOnwers, sizeof(Point2) * rows * cols, cudaMemcpyHostToDevice);
 
-    calculate_error_gpu<<<num_blocks, num_threads>>>(d_img, d_ownerMap, rows, cols, d_triangles, pixel_triangle_cnt, pixel_triangle_index, global_device_error, oTexFrameBGRA);
+    calculate_error_gpu<<<num_blocks, num_threads>>>(d_img, vertices, rows, cols, d_triangles, pixel_triangle_cnt, pixel_triangle_index, global_device_error, oTexFrameBGRA);
     gpuErrchk(cudaDeviceSynchronize());  
     
     thrust::sequence(thrust::device, global_point_mask, global_point_mask + rows * cols, 0);
     thrust::sort_by_key(thrust::device, global_device_error, global_device_error + rows * cols, global_point_mask);
+
+    num_threads = NUM_POINTS_REMOVAL_PER_ITER;
+    num_blocks = 1;
+
+    remove_points<<<num_blocks, num_threads>>>(vertices,global_point_mask); 
+    cudaMemcpy(d_ownerMap, vertices, sizeof(Point2) * rows * cols, cudaMemcpyDeviceToDevice);
+    gpuErrchk(cudaDeviceSynchronize());  
+
 }
 
 void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scalar colour, cudaTextureObject_t oTexFrameBGRA) {
@@ -862,12 +875,6 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
 	double time = std::chrono::duration<double>(t1-t0).count();
 	cout<<std::fixed<<"Corner Selection Time: "<< time <<"s"<<endl;
 
-    // printf("Vertices size: %d\n", contours.size());
-	// Draw the contour pixels. 
-	// for (int i = 0; i < (int)contours.size(); i++) {
-	// 	image.at<cv::Vec3b>(contours[i].y, contours[i].x) = cv::Vec3b((uchar)colour[0], (uchar)colour[1], (uchar)colour[2]);
-	// }
-    // return;
     int num_vert = 0;
     for (int i = 0; i<image.rows; i++) {
 		for (int j = 0; j < image.cols; j++) {
@@ -892,6 +899,7 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
     int rows = image.rows, cols = image.cols;
 
     Point2 *d_ownerMap;
+    Point2 *jumpflood;
     int *device_sum_triangles, *d_triangle_sum;
     uint8_t *d_img, *d_tri_img;
 
@@ -904,6 +912,10 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
 
     cudaMalloc(&d_triangle_sum, sizeof(int) * rows * cols);
     cudaMalloc(&d_ownerMap, sizeof(Point2) * rows * cols);
+    cudaMalloc(&jumpflood, sizeof(Point2) * rows * cols);
+    cudaMemcpy(d_ownerMap, h_deviceOnwers, sizeof(Point2) * rows * cols, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_ownerMap, h_deviceOnwers, sizeof(Point2) * rows * cols, cudaMemcpyHostToDevice);
+
     cudaMalloc(&device_sum_triangles, sizeof(int) * rows * cols);
     cudaMalloc(&d_img, sizeof(uint8_t) * rows * cols * 3);
     cudaMemcpy(d_img, image.data, sizeof(uint8_t)*rows * cols*3, cudaMemcpyHostToDevice);
@@ -912,6 +924,7 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
     cudaMalloc(&global_device_error, sizeof(int) * rows * cols);
     cudaMalloc(&global_point_mask, sizeof(int) * rows * cols);
 
+    cudaMemcpy(d_ownerMap, h_deviceOnwers, sizeof(Point2) * rows * cols, cudaMemcpyHostToDevice);
 
     int *d_triangle_cnts;
     cudaMalloc(&d_triangle_cnts, sizeof(int) * rows * cols);
@@ -926,22 +939,11 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
 	t1 = std::chrono::high_resolution_clock::now();
 	time = std::chrono::duration<double>(t1-t0).count();
 	cout<<std::fixed<<"malloc Time: "<< time <<"s"<<endl;
-
-    all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, \
-        d_img, num_triangles, pixel_triangle_cnt, pixel_triangle_index, \
-        d_triangle_cnts, d_triangles, oTexFrameBGRA); 
+    cudaMemcpy(d_ownerMap, h_deviceOnwers, sizeof(Point2) * rows * cols, cudaMemcpyHostToDevice);
 
     int iter = 0;
     for (int nv=num_vert; nv>1024; nv-=NUM_POINTS_REMOVAL_PER_ITER,iter++)  {
-        // cudaMemcpy(host_error, global_device_error, sizeof(int) * rows * cols, cudaMemcpyDeviceToHost);
-        cudaMemcpy(host_map, global_point_mask, sizeof(int) * rows * cols, cudaMemcpyDeviceToHost);
-
-        for (int i=0; i<NUM_POINTS_REMOVAL_PER_ITER; ++i) {
-            h_deviceOnwers[host_map[i]].x = -1;
-            h_deviceOnwers[host_map[i]].y = -1;
-        }
-
-        all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, \
+        all_t(rows, cols, d_ownerMap, jumpflood, h_deviceOnwers, d_triangle_sum, d_tri_img, \
             d_img, num_triangles, pixel_triangle_cnt, pixel_triangle_index, \
             d_triangle_cnts, d_triangles, oTexFrameBGRA); 
 
@@ -956,6 +958,7 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
     cudaFree(device_sum_triangles);
     cudaFree(d_ownerMap);
     cudaFree(global_device_error);
+    cudaFree(jumpflood);
     cudaFree(pixel_triangle_cnt);
     cudaFree(pixel_triangle_index);
     cudaFree(d_triangle_cnts);
