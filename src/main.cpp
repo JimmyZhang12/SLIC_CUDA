@@ -19,9 +19,9 @@ int main() {
 
 	//start segmentation
 	Mat frame;
-	frame = imread("/home/jimmy/ece508/data/image.jpg", IMREAD_COLOR);
+	frame = imread("/home/jimmy/ece508/data/flower.jpg", IMREAD_COLOR);
 
-	int diamSpx = sqrt(frame.rows*frame.cols/10000); //want about 10
+	int diamSpx = 8; //want about 10
 
 	SlicCuda oSlicCuda;
 	oSlicCuda.initialize(frame, diamSpx, initType, wc, nIteration);

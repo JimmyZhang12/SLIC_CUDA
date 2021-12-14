@@ -691,8 +691,6 @@ __host__ void launch_voronoi_kernel(Point2* d_ownerMap, int rows, int cols, dim3
 
     cudaMalloc(&double_buf, sizeof(Point2) * rows * cols);
     bool db = false;
-    // cudaMemcpy(double_buf, d_ownerMap, sizeof(Point2) * rows * cols, cudaMemcpyDeviceToDevice);
-
     for(int stepsize = start_stepsize; stepsize>=1; stepsize /= 2)
     {
         voronoi_kernel_fixed<<<gridDim, blockDim>>>(d_ownerMap, double_buf, stepsize, rows, cols, db);
@@ -704,23 +702,24 @@ __host__ void launch_voronoi_kernel(Point2* d_ownerMap, int rows, int cols, dim3
         cudaMemcpy(d_ownerMap, double_buf, sizeof(Point2) * rows * cols, cudaMemcpyDeviceToDevice);
 
     check_device_owner<<<(rows * cols - 1) / 128 + 1, 128>>>(d_ownerMap, 1, rows, cols);
-    gpuErrchk(cudaDeviceSynchronize());
 }
 
 
 
-void all_t(int rows, int cols, Point2* d_ownerMap, Point2* h_deviceOnwers, int *d_triangle_sum, uint8_t* d_tri_img, uint8_t* d_img, int &num_triangles, cv::Mat& image, Triangle* h_triangles) {
+
+
+
+void all_t(int rows, int cols, Point2* d_ownerMap, Point2* h_deviceOnwers, \
+    int *d_triangle_sum, uint8_t* d_tri_img, uint8_t* d_img, int &num_triangles, \
+    int *pixel_triangle_cnt, int *pixel_triangle_index, \
+    int *d_triangle_cnts, Triangle *d_triangles) {
+        
     cudaMemcpy(d_ownerMap, h_deviceOnwers, sizeof(Point2) * rows * cols, cudaMemcpyHostToDevice);
     unsigned int n = 32;
     dim3 blockDim(n, n);
     dim3 gridDim((cols + n - 1) / n, (rows + n - 1) / n);
 
     launch_voronoi_kernel(d_ownerMap, rows, cols, gridDim, blockDim);
-
-
-    int *d_triangle_cnts;
-    cudaMalloc(&d_triangle_cnts, sizeof(int) * rows * cols);
-
     count_triangle_kernel<<<gridDim, blockDim>>>(d_ownerMap, rows, cols, d_triangle_cnts);
     gpuErrchk(cudaDeviceSynchronize());
 
@@ -728,37 +727,16 @@ void all_t(int rows, int cols, Point2* d_ownerMap, Point2* h_deviceOnwers, int *
     thrust::inclusive_scan(thrust::device, (int*)d_triangle_cnts, (int*)d_triangle_cnts + rows*cols, (int*)d_triangle_sum);
 
     cudaMemcpy(&num_triangles, &((int*)d_triangle_sum)[rows*cols-1], sizeof(int), cudaMemcpyDeviceToHost);
-    cudaFree(d_triangle_cnts);
 
-    // num_triangles = 6000;
-
-    Triangle *d_triangles;
-    cudaMalloc(&d_triangles, sizeof(Triangle) * (num_triangles));
     triangle_kernel<<<gridDim, blockDim>>>(d_ownerMap, d_triangles, rows, cols, d_triangle_sum);
+
+    cudaMemset(pixel_triangle_cnt, 0, sizeof(int) * rows * cols);
     gpuErrchk(cudaDeviceSynchronize());
 
-
-    cudaMemcpy(d_img, image.data, sizeof(uint8_t)*rows * cols*3, cudaMemcpyHostToDevice);
-
-    // cudaMemcpy(num_triangles, &((int*)d_triangle_sum)[rows*cols-1], sizeof(int), cudaMemcpyDeviceToHost);
-
-    // cudaMalloc(d_triangles, sizeof(Triangle) * (*num_triangles));
-    // triangle_kernel<<<gridDim, blockDim>>>((Point*)d_owner_map, (Triangle*)(*d_triangles), rows, cols, (int*)d_triangle_sum);
-    // gpuErrchk(cudaDeviceSynchronize());
     int threadPerBlock1 = 96;
     int gridDim1 = (num_triangles - 1) / threadPerBlock1 + 1;
 
     draw_triangle_kernel1<<<gridDim1, threadPerBlock1>>>((Triangle*)d_triangles, num_triangles, (uint8_t*)d_img, (uint8_t*)d_tri_img, rows, cols); 
-    gpuErrchk(cudaDeviceSynchronize());  
-    cudaMemcpy(h_triangles, d_triangles, sizeof(Triangle) * num_triangles, cudaMemcpyDeviceToHost);
-
-    int *pixel_triangle_cnt;
-    cudaMalloc(&pixel_triangle_cnt, sizeof(int) * rows * cols);
-    cudaMemset(pixel_triangle_cnt, 0, sizeof(int) * rows * cols);
-
-    int *pixel_triangle_index;
-    cudaMalloc(&pixel_triangle_index, sizeof(int) * rows * cols * MAX_TRIANGLE_PER_PIXEL);
-
     group_triangle_kernel<<<gridDim1, threadPerBlock1>>>(d_triangles, num_triangles, pixel_triangle_cnt, pixel_triangle_index, rows, cols);
     gpuErrchk(cudaDeviceSynchronize());  
 
@@ -771,12 +749,6 @@ void all_t(int rows, int cols, Point2* d_ownerMap, Point2* h_deviceOnwers, int *
     
     thrust::sequence(thrust::device, global_point_mask, global_point_mask + rows * cols, 0);
     thrust::sort_by_key(thrust::device, global_device_error, global_device_error + rows * cols, global_point_mask);
-
-    cudaFree(pixel_triangle_cnt);
-    cudaFree(pixel_triangle_index);
-
-
-    cudaFree(d_triangles);
 }
 
 void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scalar colour) {
@@ -907,27 +879,53 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
     // }
     printf("Num vertices: %d\n", num_vert);
     
+    t0 = std::chrono::high_resolution_clock::now();
+
     int rows = image.rows, cols = image.cols;
 
     Point2 *d_ownerMap;
     int *device_sum_triangles, *d_triangle_sum;
     uint8_t *d_img, *d_tri_img;
+
+    int *pixel_triangle_cnt;
+    cudaMalloc(&pixel_triangle_cnt, sizeof(int) * rows * cols);
+    cudaMemset(pixel_triangle_cnt, 0, sizeof(int) * rows * cols);
+
+    int *pixel_triangle_index;
+    cudaMalloc(&pixel_triangle_index, sizeof(int) * rows * cols * MAX_TRIANGLE_PER_PIXEL);
+
     cudaMalloc(&d_triangle_sum, sizeof(int) * rows * cols);
     cudaMalloc(&d_ownerMap, sizeof(Point2) * rows * cols);
     cudaMalloc(&device_sum_triangles, sizeof(int) * rows * cols);
     cudaMalloc(&d_img, sizeof(uint8_t) * rows * cols * 3);
+    cudaMemcpy(d_img, image.data, sizeof(uint8_t)*rows * cols*3, cudaMemcpyHostToDevice);
+
     cudaMalloc(&d_tri_img, sizeof(uint8_t) * rows * cols * 3);
     cudaMalloc(&global_device_error, sizeof(int) * rows * cols);
     cudaMalloc(&global_point_mask, sizeof(int) * rows * cols);
-    Triangle *h_triangles = new Triangle[80000];
+
+
+    int *d_triangle_cnts;
+    cudaMalloc(&d_triangle_cnts, sizeof(int) * rows * cols);
+
+    Triangle *d_triangles;
+    cudaMalloc(&d_triangles, sizeof(Triangle) * (80000));
     
     int *host_error = new int[rows * cols];
     int *host_map  = new int[rows * cols];
     int num_triangles;
-    all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, d_img, num_triangles, image, h_triangles);
+
+	t1 = std::chrono::high_resolution_clock::now();
+	time = std::chrono::duration<double>(t1-t0).count();
+	cout<<std::fixed<<"malloc Time: "<< time <<"s"<<endl;
+
+    all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, \
+        d_img, num_triangles, pixel_triangle_cnt, pixel_triangle_index, \
+        d_triangle_cnts, d_triangles); 
+
     int iter = 0;
     for (int nv=num_vert; nv>1024; nv-=NUM_POINTS_REMOVAL_PER_ITER,iter++)  {
-        cudaMemcpy(host_error, global_device_error, sizeof(int) * rows * cols, cudaMemcpyDeviceToHost);
+        // cudaMemcpy(host_error, global_device_error, sizeof(int) * rows * cols, cudaMemcpyDeviceToHost);
         cudaMemcpy(host_map, global_point_mask, sizeof(int) * rows * cols, cudaMemcpyDeviceToHost);
 
         for (int i=0; i<NUM_POINTS_REMOVAL_PER_ITER; ++i) {
@@ -935,51 +933,26 @@ void SlicCuda::displayPoint1(cv::Mat& image, const float* labels, const cv::Scal
             h_deviceOnwers[host_map[i]].y = -1;
         }
 
-        // int min_err = INT_MAX, min_i = -1;
-        // for (int i=0; i<rows * cols; ++i) {
-        //     if (h_deviceOnwers[i].isInvalid()) continue;
-        //     int err = host_error[i];
-        //     if (err < min_err) {
-        //         min_err = err;
-        //         min_i = i;
-        //         // printf("removing point: (%d, %d)\n", min_i, min_j);
-        //         // break;
-        //     }
-        // }
-        // if (min_i > -1) {
-        //     h_deviceOnwers[min_i].x = -1;
-        //     h_deviceOnwers[min_i].y = -1;
-        //     all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, d_img, num_triangles, image, h_triangles);
-        //     // cudaMemcpy(image.data, d_tri_img, sizeof(uint8_t) * rows * cols, cudaMemcpyDeviceToHost);
-        //     cudaDeviceSynchronize();
-        // } else {
-        //     break;
-        // }
+        all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, \
+            d_img, num_triangles, pixel_triangle_cnt, pixel_triangle_index, \
+            d_triangle_cnts, d_triangles); 
 
-        all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, d_img, num_triangles, image, h_triangles);
-        
-        // all_t(rows, cols, d_ownerMap, h_deviceOnwers, d_triangle_sum, d_tri_img, d_img, num_triangles, image, h_triangles);
         if (iter % 32 == 0) printf("current nb points: %d\n", nv);
-        if (iter % 4 == 0) {
-            Mat tmp;
-            tmp.create(cv::Size2d(cols, rows), CV_8UC3);
-            cudaMemcpy(tmp.data, d_tri_img, sizeof(uint8_t) * rows * cols * 3, cudaMemcpyDeviceToHost);
-            imwrite("/home/shun/Desktop/segment.jpg", tmp);
-        }
     }
 
 
     cudaMemcpy(image.data, d_tri_img, sizeof(uint8_t) * rows * cols * 3, cudaMemcpyDeviceToHost);
-
-
     cudaFree(d_img);
     cudaFree(d_tri_img);
     cudaFree(d_triangle_sum);
     cudaFree(device_sum_triangles);
     cudaFree(d_ownerMap);
     cudaFree(global_device_error);
+    cudaFree(pixel_triangle_cnt);
+    cudaFree(pixel_triangle_index);
+    cudaFree(d_triangle_cnts);
+    cudaFree(d_triangles);
 
-    delete[]h_triangles;
     delete[] host_error;
     delete[] host_map;
 
