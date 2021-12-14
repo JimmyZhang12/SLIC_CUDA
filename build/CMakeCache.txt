@@ -22,7 +22,7 @@ CMAKE_AR:FILEPATH=/usr/bin/ar
 
 //Choose the type of build, options are: None(CMAKE_CXX_FLAGS or
 // CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel.
-CMAKE_BUILD_TYPE:STRING=debug
+CMAKE_BUILD_TYPE:STRING=release
 
 //No help, variable specified on the command line.
 CMAKE_BUILD_VERSION:UNINITIALIZED=debug
